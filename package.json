@@ -1,0 +1,24 @@
+{
+  "name": "leapfrog-analytics-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Frontend-only GA4 analytics dashboard for Leapfrog Services. All parsing and analysis run in the browser via SheetJS (xlsx) + plain JavaScript. No backend.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-icons": "^5.0.1",
+    "react-router-dom": "^6.26.2",
+    "recharts": "^2.12.7",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "vite": "^5.4.8"
+  }
+}

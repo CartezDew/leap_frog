@@ -1,0 +1,1007 @@
+// Analytics enrichment — JavaScript port of server/services/analyzer.py.
+//
+// Implements every analysis rule from SKILL.md sections 3 through 8:
+//  - Bounce-rate / engagement / new-user / return-rate / events-per-session
+//  - City and source bot scoring
+//  - User ID classification, bot scoring, persona assignment
+//  - Unicorn / opportunity page identification
+//  - Contact form classification
+//  - Aggregated outputs ready for the dashboard pages
+
+import {
+  BOUNCE_TIER_AMBER,
+  BOUNCE_TIER_GREEN,
+  BOUNCE_TIER_RED,
+  HIGH_ENGAGEMENT_MAX_BOT_SCORE,
+  HIGH_ENGAGEMENT_MIN_DURATION,
+  HIGH_ENGAGEMENT_MIN_RATE,
+  HIGH_ENGAGEMENT_MIN_SESSIONS,
+  KNOWN_DATACENTER_CITIES,
+  KNOWN_SPAM_SOURCES,
+  MONTH_NAMES,
+  MULTI_MONTH_MIN_MONTHS,
+  MULTI_MONTH_MIN_RATE,
+  MULTI_MONTH_MIN_SESSIONS,
+  OPPORTUNITY_MIN_BOUNCE,
+  OPPORTUNITY_MIN_SESSIONS,
+  UNICORN_MAX_BOUNCE,
+  UNICORN_MIN_SESSIONS,
+  classifyBotScore,
+} from './skillConfig.js';
+import { runVerifier } from './verifier.js';
+import { runAccuracyCheck } from './accuracyCheck.js';
+import { decorateWithEqs, runUniqueAnalytics } from './uniqueAnalytics.js';
+import { runBounceBenchmark } from './bounceBenchmark.js';
+
+// ---------------------------------------------------------------------------
+// Generic helpers
+// ---------------------------------------------------------------------------
+
+function num(v, fallback = 0) {
+  if (v === null || v === undefined) return fallback;
+  if (typeof v === 'number') return Number.isFinite(v) ? v : fallback;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function safeDiv(numer, denom, fallback = 0) {
+  const d = num(denom, 0);
+  if (!d) return fallback;
+  return num(numer, 0) / d;
+}
+
+export function calculateBounceRate(engaged, sessions) {
+  const s = num(sessions, 0);
+  if (!s) return 0;
+  return Math.max(0, Math.min(1, 1 - num(engaged, 0) / s));
+}
+
+function bounceTier(rate) {
+  if (rate >= BOUNCE_TIER_RED) return 'high';
+  if (rate >= BOUNCE_TIER_AMBER) return 'medium';
+  if (rate <= BOUNCE_TIER_GREEN) return 'good';
+  return 'okay';
+}
+
+function groupBy(records, keyFn) {
+  const map = new Map();
+  for (const r of records) {
+    const k = keyFn(r);
+    if (!map.has(k)) map.set(k, []);
+    map.get(k).push(r);
+  }
+  return map;
+}
+
+function sumKey(records, key) {
+  let total = 0;
+  for (const r of records) total += num(r[key], 0);
+  return total;
+}
+
+function meanKey(records, key) {
+  if (!records.length) return 0;
+  return sumKey(records, key) / records.length;
+}
+
+// ---------------------------------------------------------------------------
+// Bot scoring (SKILL.md 4.1, 4.2)
+// ---------------------------------------------------------------------------
+
+export function cityBotScore(row) {
+  let score = 0;
+  const sessions = num(row.sessions);
+  const avgEng = num(row.avg_engagement_time);
+  const bounce = num(row.bounce_rate);
+  const returnRate = num(row.return_rate);
+  const eventsPer = num(row.events_per_session);
+  const city = String(row.city || '').trim();
+
+  if (avgEng < 1.0 && sessions > 50) score += 4;
+  else if (avgEng < 3.0 && sessions > 30) score += 2;
+
+  if (bounce >= 0.9) score += 4;
+  else if (bounce >= 0.75) score += 2;
+
+  if (returnRate < 0.02 && sessions > 50) score += 2;
+
+  if (KNOWN_DATACENTER_CITIES.some((c) => c.toLowerCase() === city.toLowerCase())) {
+    score += 3;
+  }
+
+  if (eventsPer < 1.0 && sessions > 20) score += 2;
+
+  return score;
+}
+
+export function sourceBotScore(row) {
+  let score = 0;
+  const sessions = num(row.sessions);
+  const avgEng = num(row.avg_engagement_time);
+  const bounce = num(row.bounce_rate);
+  const returnRate = num(row.return_rate);
+  const source = String(row.source || '').trim();
+
+  if (avgEng < 2.0 && sessions > 20) score += 3;
+  if (bounce >= 0.9 && sessions > 10) score += 4;
+  if (returnRate < 0.01 && sessions > 20) score += 2;
+  if (KNOWN_SPAM_SOURCES.some((s) => s.toLowerCase() === source.toLowerCase())) {
+    score += 5;
+  }
+
+  return score;
+}
+
+// ---------------------------------------------------------------------------
+// User ID analysis (SKILL.md 5.1 - 5.4)
+// ---------------------------------------------------------------------------
+
+export function classifyUserId(uid) {
+  const s = String(uid ?? '');
+  if (s.startsWith('amp-')) return 'AMP';
+  if (s.includes('.')) {
+    const parts = s.split('.');
+    const suffix = parts.length === 2 ? parts[parts.length - 1] : '';
+    if (suffix === '2') return 'Cross-Device (.2)';
+    if (suffix === '17' || suffix === '18') return 'Google Signals (.17/.18)';
+    return 'Fractional (other)';
+  }
+  return 'Standard';
+}
+
+export function userBotScore(row) {
+  const uid = String(row.user_id || row.effective_user_id || '');
+  const sessions = num(row.total_sessions);
+  const engaged = num(row.total_engaged);
+  const duration = num(row.avg_session_duration);
+  const views = num(row.total_views);
+  const engagementRate = num(row.engagement_rate);
+
+  let score = 0;
+  if (uid.endsWith('.2')) score += 1;
+  if (uid.startsWith('amp-')) score += 1;
+  if (sessions > 0 && engaged === 0) score += 3;
+  if (duration < 2 && sessions > 3) score += 2;
+  if (views === 0 && sessions > 0) score += 2;
+  if (sessions > 10 && engagementRate < 0.1) score += 2;
+  return score;
+}
+
+export function assignPersona(row) {
+  const sessions = num(row.total_sessions);
+  const duration = num(row.avg_session_duration);
+  const months = num(row.months_active);
+  const engagement = num(row.engagement_rate);
+  const viewsPer = num(row.avg_views_per_session);
+
+  if (sessions >= 15 && duration >= 300 && months >= 3) return 'Deep Researcher';
+  if (sessions >= 15 && duration >= 300 && months <= 2) return 'Intensive Evaluator';
+  if (sessions >= 8 && duration >= 400 && engagement >= 0.7) return 'High-Value Prospect';
+  if (sessions >= 8 && duration >= 100 && months >= 3) return 'Engaged Returning User';
+  if (sessions >= 5 && duration >= 600) return 'Deep Reader';
+  if (sessions >= 5 && viewsPer >= 4) return 'Site Explorer';
+  if (sessions >= 3 && duration >= 300 && engagement >= 0.8) return 'Strong Prospect';
+  return 'Engaged Visitor';
+}
+
+// ---------------------------------------------------------------------------
+// Contact classification (SKILL.md 7)
+// ---------------------------------------------------------------------------
+
+export function classifyContact(text) {
+  if (text === null || text === undefined) return 'Unknown';
+  if (typeof text === 'number' && Number.isNaN(text)) return 'Unknown';
+  const t = String(text).toLowerCase();
+  if (!t.trim()) return 'Unknown';
+
+  const sales = [
+    'msp',
+    'managed it',
+    'managed service',
+    'outsourc',
+    'it support',
+    'cybersecurity service',
+    'cmmc',
+    'microsoft 365',
+    'help desk',
+    'it service',
+  ];
+  if (sales.some((k) => t.includes(k))) return 'Sales Lead';
+
+  if (['partner', 'collaboration', 'subcontract'].some((k) => t.includes(k))) {
+    return 'Partnership';
+  }
+
+  const spam = [
+    'cleaning',
+    'janitorial',
+    'payment processing',
+    'wikipedia',
+    'staffing',
+    'spam',
+  ];
+  if (spam.some((k) => t.includes(k))) return 'Spam';
+
+  if (['interview', 'job', 'resume', 'career', 'position'].some((k) => t.includes(k))) {
+    return 'Job Seeker';
+  }
+
+  if (
+    ['bitlocker', 'citrix', 'network error', 'unstable'].some((k) => t.includes(k))
+  ) {
+    return 'Support Request';
+  }
+
+  if (
+    ['interested in services', 'looking to get started', 'it & cyber'].some((k) =>
+      t.includes(k),
+    )
+  ) {
+    return 'Sales Lead';
+  }
+
+  return 'Needs Review';
+}
+
+// ---------------------------------------------------------------------------
+// Wide-format aggregations
+// ---------------------------------------------------------------------------
+
+function aggregateWide(records, dimColRaw) {
+  if (!records || records.length === 0) return [];
+  const dimCol = dimColRaw;
+  const dimKey = dimCol.toLowerCase();
+
+  const groups = groupBy(records, (r) => r[dimCol]);
+  const out = [];
+  for (const [dimValue, rows] of groups.entries()) {
+    if (dimValue === null || dimValue === undefined || dimValue === '') continue;
+    const sessions = sumKey(rows, 'sessions');
+    const engaged = sumKey(rows, 'engaged_sessions');
+    const totalUsers = sumKey(rows, 'total_users');
+    const newUsers = sumKey(rows, 'new_users');
+    const activeUsers = sumKey(rows, 'active_users');
+    const eventCount = sumKey(rows, 'event_count');
+    let engSeconds = 0;
+    for (const r of rows) {
+      engSeconds += num(r.avg_engagement_time, 0) * num(r.sessions, 0);
+    }
+    const avgEng = safeDiv(engSeconds, sessions, 0);
+    const bounce = calculateBounceRate(engaged, sessions);
+    const engagementRate = safeDiv(engaged, sessions, 0);
+    const newUserRate = safeDiv(newUsers, totalUsers, 0);
+    const returnRate = Math.max(0, 1 - newUserRate);
+    const eventsPerSession = safeDiv(eventCount, sessions, 0);
+
+    out.push({
+      [dimKey]: dimValue,
+      sessions,
+      engaged_sessions: engaged,
+      total_users: totalUsers,
+      new_users: newUsers,
+      active_users: activeUsers,
+      event_count: eventCount,
+      avg_engagement_time: avgEng,
+      bounce_rate: bounce,
+      engagement_rate: engagementRate,
+      new_user_rate: newUserRate,
+      return_rate: returnRate,
+      events_per_session: eventsPerSession,
+      bounce_tier: bounceTier(bounce),
+    });
+  }
+  return out;
+}
+
+function monthlyTotals(records) {
+  if (!records || records.length === 0) return [];
+  const groups = groupBy(records, (r) => r.Month);
+  const out = [];
+  for (const [month, rows] of groups.entries()) {
+    if (month === null || month === undefined) continue;
+    const sessions = sumKey(rows, 'sessions');
+    const engaged = sumKey(rows, 'engaged_sessions');
+    const totalUsers = sumKey(rows, 'total_users');
+    const newUsers = sumKey(rows, 'new_users');
+    const eventCount = sumKey(rows, 'event_count');
+    out.push({
+      Month: month,
+      sessions,
+      engaged_sessions: engaged,
+      total_users: totalUsers,
+      new_users: newUsers,
+      event_count: eventCount,
+      bounce_rate: calculateBounceRate(engaged, sessions),
+      engagement_rate: safeDiv(engaged, sessions, 0),
+    });
+  }
+
+  out.sort((a, b) => a.Month - b.Month);
+
+  let prior = null;
+  for (const r of out) {
+    const m = Number(r.Month);
+    r.month_name = m >= 1 && m <= 12 ? MONTH_NAMES[m - 1] : String(r.Month);
+    r.sessions_mom_delta = prior === null ? 0 : r.sessions - prior;
+    r.sessions_mom_pct =
+      prior === null || prior === 0 ? 0 : (r.sessions - prior) / prior;
+    prior = r.sessions;
+  }
+
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// User aggregation
+// ---------------------------------------------------------------------------
+
+function aggregateUsers(records) {
+  if (!records || records.length === 0) return [];
+  const groups = groupBy(records, (r) => r.effective_user_id);
+  const out = [];
+  for (const [uid, rows] of groups.entries()) {
+    if (uid === null || uid === undefined || String(uid).trim() === '') continue;
+
+    const totalSessions = sumKey(rows, 'sessions');
+    const totalEngaged = sumKey(rows, 'engaged_sessions');
+    const totalViews = sumKey(rows, 'views');
+    const totalEvents = sumKey(rows, 'event_count');
+    const totalNewUsers = sumKey(rows, 'new_users');
+    const monthsActive = new Set(
+      rows.map((r) => r.month_num).filter((m) => m !== null && m !== undefined),
+    ).size;
+    const avgSessionDuration = meanKey(rows, 'avg_engagement_time');
+    const avgViewsPerSession = meanKey(rows, 'views_per_session');
+
+    const engagementRate = safeDiv(totalEngaged, totalSessions, 0);
+    const bounceRate = calculateBounceRate(totalEngaged, totalSessions);
+    const eventsPerSession = safeDiv(totalEvents, totalSessions, 0);
+
+    const record = {
+      user_id: String(uid),
+      effective_user_id: String(uid),
+      total_sessions: totalSessions,
+      total_engaged: totalEngaged,
+      total_views: totalViews,
+      total_events: totalEvents,
+      total_new_users: totalNewUsers,
+      months_active: monthsActive,
+      avg_session_duration: avgSessionDuration,
+      avg_views_per_session: avgViewsPerSession,
+      engagement_rate: engagementRate,
+      bounce_rate: bounceRate,
+      events_per_session: eventsPerSession,
+    };
+    record.id_type = classifyUserId(record.user_id);
+    const score = userBotScore(record);
+    record.bot_score = score;
+    record.bot_classification = classifyBotScore(score);
+    record.persona =
+      score < HIGH_ENGAGEMENT_MAX_BOT_SCORE ? assignPersona(record) : 'Bot/Unverified';
+    record.is_high_engagement =
+      record.total_sessions >= HIGH_ENGAGEMENT_MIN_SESSIONS &&
+      record.engagement_rate >= HIGH_ENGAGEMENT_MIN_RATE &&
+      record.avg_session_duration >= HIGH_ENGAGEMENT_MIN_DURATION &&
+      score < HIGH_ENGAGEMENT_MAX_BOT_SCORE;
+    record.is_multi_month =
+      record.months_active >= MULTI_MONTH_MIN_MONTHS &&
+      record.total_sessions >= MULTI_MONTH_MIN_SESSIONS &&
+      record.engagement_rate >= MULTI_MONTH_MIN_RATE;
+    out.push(record);
+  }
+  return out;
+}
+
+function classifyPages(pageAgg) {
+  return pageAgg.map((row) => {
+    const path = String(row.page || '').toLowerCase();
+    const bounce = num(row.bounce_rate);
+    const sessions = num(row.sessions);
+    let role;
+    if (path === '/' || path === '/index' || path === '') role = 'Homepage';
+    else if (path.includes('contact')) role = 'Conversion Page';
+    else if (sessions >= UNICORN_MIN_SESSIONS && bounce <= UNICORN_MAX_BOUNCE)
+      role = 'Unicorn';
+    else if (sessions >= OPPORTUNITY_MIN_SESSIONS && bounce >= OPPORTUNITY_MIN_BOUNCE)
+      role = 'High-Bounce Opportunity';
+    else if (path.includes('blog') || path.includes('article') || path.includes('case'))
+      role = 'Editorial';
+    else if (path.includes('service') || path.includes('solution')) role = 'Service';
+    else role = 'Supporting';
+    return { ...row, content_role: role };
+  });
+}
+
+function scoreCities(cityAgg) {
+  return cityAgg.map((row) => {
+    const score = cityBotScore(row);
+    return { ...row, bot_score: score, bot_classification: classifyBotScore(score) };
+  });
+}
+
+function scoreSources(sourceAgg) {
+  return sourceAgg.map((row) => {
+    const score = sourceBotScore(row);
+    return { ...row, bot_score: score, bot_classification: classifyBotScore(score) };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Contact summary
+// ---------------------------------------------------------------------------
+
+function classifyContactRecords(records) {
+  return (records || []).map((r) => ({
+    ...r,
+    lead_type: classifyContact(r.how_can_we_help),
+  }));
+}
+
+function contactSummary(records) {
+  if (!records || records.length === 0) return { total: 0, by_type: {}, by_pct: {} };
+  const counter = new Map();
+  for (const r of records) {
+    const k = r.lead_type || 'Unknown';
+    counter.set(k, (counter.get(k) || 0) + 1);
+  }
+  const total = records.length;
+  const byType = {};
+  const byPct = {};
+  // Sort by count descending for stable display.
+  const sorted = [...counter.entries()].sort((a, b) => b[1] - a[1]);
+  for (const [k, v] of sorted) {
+    byType[k] = v;
+    byPct[k] = total ? v / total : 0;
+  }
+  return { total, by_type: byType, by_pct: byPct };
+}
+
+function userSummary(usersDf) {
+  if (!usersDf || usersDf.length === 0) {
+    return {
+      total_ids: 0,
+      clean_human: 0,
+      confirmed_bot: 0,
+      likely_bot: 0,
+      suspicious: 0,
+      high_engagement: 0,
+      multi_month: 0,
+      fractional: 0,
+      amp: 0,
+    };
+  }
+  const fractionalSet = new Set([
+    'Cross-Device (.2)',
+    'Google Signals (.17/.18)',
+    'Fractional (other)',
+  ]);
+  let cleanHuman = 0;
+  let confirmedBot = 0;
+  let likelyBot = 0;
+  let suspicious = 0;
+  let highEng = 0;
+  let multiMonth = 0;
+  let fractional = 0;
+  let amp = 0;
+  for (const u of usersDf) {
+    if (u.bot_classification === 'human') cleanHuman += 1;
+    if (u.bot_classification === 'confirmed_bot') confirmedBot += 1;
+    if (u.bot_classification === 'likely_bot') likelyBot += 1;
+    if (u.bot_classification === 'suspicious') suspicious += 1;
+    if (u.is_high_engagement) highEng += 1;
+    if (u.is_multi_month) multiMonth += 1;
+    if (fractionalSet.has(u.id_type)) fractional += 1;
+    if (u.id_type === 'AMP') amp += 1;
+  }
+  return {
+    total_ids: usersDf.length,
+    clean_human: cleanHuman,
+    confirmed_bot: confirmedBot,
+    likely_bot: likelyBot,
+    suspicious,
+    high_engagement: highEng,
+    multi_month: multiMonth,
+    fractional,
+    amp,
+  };
+}
+
+function benchmarkUsers(usersDf) {
+  if (!usersDf || usersDf.length === 0) return null;
+  const high = usersDf.filter((u) => u.is_high_engagement);
+  if (high.length === 0) return null;
+  return {
+    user_count: high.length,
+    avg_session_duration: meanKey(high, 'avg_session_duration'),
+    avg_views_per_session: meanKey(high, 'avg_views_per_session'),
+    avg_events_per_session: meanKey(high, 'events_per_session'),
+    avg_engagement_rate: meanKey(high, 'engagement_rate'),
+    avg_months_active: meanKey(high, 'months_active'),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Insights
+// ---------------------------------------------------------------------------
+
+function generateInsights({ summary, bounce, sources, cities, pages, users, contactInfo }) {
+  const insights = [];
+  const siteBounce = num(summary.site_bounce_rate, 0);
+
+  if (siteBounce >= BOUNCE_TIER_RED) {
+    insights.push({
+      title: 'Site-wide bounce rate is critically high',
+      evidence: `Average site bounce: ${(siteBounce * 100).toFixed(1)}%. More than half of visitors leave without engagement.`,
+      priority: 'high',
+    });
+  } else if (siteBounce >= BOUNCE_TIER_AMBER) {
+    insights.push({
+      title: 'Site-wide bounce rate trending high',
+      evidence: `Average site bounce: ${(siteBounce * 100).toFixed(1)}%. Investigate top landing pages for fixes.`,
+      priority: 'medium',
+    });
+  }
+
+  let confirmedBotSessions = 0;
+  for (const c of cities) {
+    if (c.bot_classification === 'confirmed_bot') {
+      confirmedBotSessions += num(c.sessions, 0);
+    }
+  }
+  const totalSessions = num(summary.total_sessions, 0) || 1;
+  const botShare = confirmedBotSessions / totalSessions;
+  if (botShare >= 0.05) {
+    insights.push({
+      title: 'Bot traffic represents a measurable share of sessions',
+      evidence: `Confirmed-bot cities account for ${Math.round(confirmedBotSessions).toLocaleString('en-US')} sessions (${(botShare * 100).toFixed(1)}% of site total).`,
+      priority: 'high',
+    });
+  }
+
+  const highBouncePages = pages.filter(
+    (p) =>
+      num(p.sessions) >= OPPORTUNITY_MIN_SESSIONS &&
+      num(p.bounce_rate) >= OPPORTUNITY_MIN_BOUNCE,
+  );
+  if (highBouncePages.length) {
+    const sample = [...highBouncePages].sort(
+      (a, b) => num(b.sessions) - num(a.sessions),
+    )[0];
+    insights.push({
+      title: `${highBouncePages.length} high-traffic pages bleeding visitors`,
+      evidence: `Example: '${sample.page}' — ${Math.round(num(sample.sessions)).toLocaleString('en-US')} sessions, ${(num(sample.bounce_rate) * 100).toFixed(1)}% bounce.`,
+      priority: 'high',
+    });
+  }
+
+  const unicornPages = pages.filter(
+    (p) =>
+      num(p.sessions) >= UNICORN_MIN_SESSIONS &&
+      num(p.bounce_rate) <= UNICORN_MAX_BOUNCE,
+  );
+  if (unicornPages.length) {
+    const top = [...unicornPages].sort((a, b) => num(a.bounce_rate) - num(b.bounce_rate))[0];
+    insights.push({
+      title: `${unicornPages.length} unicorn pages drive deep engagement`,
+      evidence: `Best performer: '${top.page}' — ${(num(top.bounce_rate) * 100).toFixed(1)}% bounce. Mine these pages for messaging to reuse.`,
+      priority: 'medium',
+    });
+  }
+
+  const salesLeads = contactInfo?.summary?.by_type?.['Sales Lead'] || 0;
+  if (salesLeads) {
+    insights.push({
+      title: `${salesLeads} sales leads captured via contact form`,
+      evidence: 'Route directly to sales for qualification.',
+      priority: 'medium',
+    });
+  }
+
+  const spamLeads = contactInfo?.summary?.by_type?.Spam || 0;
+  if (spamLeads >= 5) {
+    insights.push({
+      title: `Form spam volume worth a hCaptcha review (${spamLeads} entries)`,
+      evidence: 'Consider adding bot protection if spam keeps climbing.',
+      priority: 'low',
+    });
+  }
+
+  const highValueUsers = users.filter((u) => u.is_high_engagement);
+  if (highValueUsers.length) {
+    insights.push({
+      title: `${highValueUsers.length} high-engagement user IDs identified`,
+      evidence:
+        'These IDs return repeatedly with deep session times — ideal for retargeting and lookalike audiences.',
+      priority: 'medium',
+    });
+  }
+
+  const multiMonth = users.filter((u) => u.is_multi_month);
+  if (multiMonth.length) {
+    insights.push({
+      title: `${multiMonth.length} users active across 3+ months`,
+      evidence: 'Long-funnel research behavior — sequence remarketing accordingly.',
+      priority: 'low',
+    });
+  }
+
+  const organic = sources.find((s) => String(s.source || '').toLowerCase().includes('google'));
+  if (organic) {
+    insights.push({
+      title: 'Google organic remains the largest traffic engine',
+      evidence: `${Math.round(num(organic.sessions)).toLocaleString('en-US')} sessions, ${(num(organic.bounce_rate) * 100).toFixed(1)}% bounce — double-down on SEO content investment.`,
+      priority: 'medium',
+    });
+  }
+
+  const homepageMonthly = bounce?.homepage_monthly || [];
+  if (homepageMonthly.length) {
+    const maxMonth = homepageMonthly.reduce(
+      (best, m) => (num(m.bounce_rate) > num(best.bounce_rate) ? m : best),
+      homepageMonthly[0],
+    );
+    if (num(maxMonth.bounce_rate) >= BOUNCE_TIER_RED) {
+      insights.push({
+        title: `Homepage bounce spiked in ${maxMonth.month_name}`,
+        evidence: `${(num(maxMonth.bounce_rate) * 100).toFixed(1)}% bounce — check campaigns or landing-page experiments that month.`,
+        priority: 'medium',
+      });
+    }
+  }
+
+  return insights.slice(0, 10);
+}
+
+// ---------------------------------------------------------------------------
+// Top-level orchestrator
+// ---------------------------------------------------------------------------
+
+export function runAllAnalysis(parsed, opts = {}) {
+  const rawTotals = opts.rawTotals || parsed?._rawTotals || {};
+  const analysisSheets = opts.analysisSheets || parsed?._analysisSheets || {};
+  const sourceRecords = parsed.source || [];
+  const mediumRecords = parsed.medium || [];
+  const deviceRecords = parsed.device || [];
+  const cityRecords = parsed.city || [];
+  const pageRecords = parsed.page_path || [];
+  const userRecords = parsed.user || [];
+  const contactRecords = parsed.contact || [];
+
+  // Aggregations.
+  let sourceAgg = aggregateWide(sourceRecords, 'Source');
+  const mediumAgg = aggregateWide(mediumRecords, 'Medium');
+  const deviceAgg = aggregateWide(deviceRecords, 'Device');
+  let cityAgg = aggregateWide(cityRecords, 'City');
+  let pageAgg = aggregateWide(pageRecords, 'Page');
+
+  sourceAgg = scoreSources(sourceAgg);
+  cityAgg = scoreCities(cityAgg);
+  pageAgg = classifyPages(pageAgg);
+
+  const usersDf = aggregateUsers(userRecords);
+  const contactClassified = classifyContactRecords(contactRecords);
+
+  // Monthly trends. Prefer medium; fall back to source.
+  const monthlyBasis = mediumRecords.length ? mediumRecords : sourceRecords;
+  const monthly = monthlyTotals(monthlyBasis);
+
+  // Site totals.
+  let siteSessions = 0;
+  let siteEngaged = 0;
+  let siteUsers = 0;
+  let siteNewUsers = 0;
+  if (mediumAgg.length) {
+    siteSessions = sumKey(mediumAgg, 'sessions');
+    siteEngaged = sumKey(mediumAgg, 'engaged_sessions');
+    siteUsers = sumKey(mediumAgg, 'total_users');
+    siteNewUsers = sumKey(mediumAgg, 'new_users');
+  } else if (sourceAgg.length) {
+    siteSessions = sumKey(sourceAgg, 'sessions');
+    siteEngaged = sumKey(sourceAgg, 'engaged_sessions');
+    siteUsers = sumKey(sourceAgg, 'total_users');
+    siteNewUsers = sumKey(sourceAgg, 'new_users');
+  }
+  const siteBounce = calculateBounceRate(siteEngaged, siteSessions);
+  const siteEngagementRate = safeDiv(siteEngaged, siteSessions, 0);
+  const newUserRate = safeDiv(siteNewUsers, siteUsers, 0);
+
+  // Organic — sessions and bounce. Prefer the medium classification "organic",
+  // fall back to source = google/bing.
+  let organicSessions = 0;
+  let organicEngaged = 0;
+  if (mediumAgg.length) {
+    const organic = mediumAgg.filter((m) =>
+      String(m.medium || '').toLowerCase().includes('organic'),
+    );
+    organicSessions = organic.reduce((acc, m) => acc + num(m.sessions, 0), 0);
+    organicEngaged = organic.reduce((acc, m) => acc + num(m.engaged_sessions, 0), 0);
+  }
+  if (organicSessions === 0 && sourceAgg.length) {
+    const organic = sourceAgg.filter((s) => {
+      const name = String(s.source || '').toLowerCase();
+      return name.includes('google') || name.includes('bing') || name.includes('duckduckgo') || name.includes('yahoo');
+    });
+    organicSessions = organic.reduce((acc, s) => acc + num(s.sessions, 0), 0);
+    organicEngaged = organic.reduce((acc, s) => acc + num(s.engaged_sessions, 0), 0);
+  }
+  const organicBounce = calculateBounceRate(organicEngaged, organicSessions);
+
+  // Direct — sessions and bounce.
+  let directSessions = 0;
+  let directEngaged = 0;
+  if (mediumAgg.length) {
+    const direct = mediumAgg.filter((m) => {
+      const name = String(m.medium || '').toLowerCase().trim();
+      return name === '(none)' || name === 'none' || name === 'direct' || name === '';
+    });
+    directSessions = direct.reduce((acc, m) => acc + num(m.sessions, 0), 0);
+    directEngaged = direct.reduce((acc, m) => acc + num(m.engaged_sessions, 0), 0);
+  }
+  if (directSessions === 0 && sourceAgg.length) {
+    const direct = sourceAgg.filter((s) => {
+      const name = String(s.source || '').toLowerCase().trim();
+      return name === '(direct)' || name === 'direct' || name === '(none)';
+    });
+    directSessions = direct.reduce((acc, s) => acc + num(s.sessions, 0), 0);
+    directEngaged = direct.reduce((acc, s) => acc + num(s.engaged_sessions, 0), 0);
+  }
+  const directBounce = calculateBounceRate(directEngaged, directSessions);
+
+  let contactPageSessions = 0;
+  if (pageAgg.length) {
+    contactPageSessions = pageAgg
+      .filter((p) => String(p.page || '').toLowerCase().includes('contact'))
+      .reduce((acc, p) => acc + num(p.sessions, 0), 0);
+  }
+  const contactSessionShare = safeDiv(contactPageSessions, siteSessions, 0);
+
+  // Best-effort year inference from contact dates or filename hints.
+  let reportYear = null;
+  for (const c of contactRecords) {
+    const raw = c.conversion_date || c.date;
+    if (!raw) continue;
+    const d = new Date(raw);
+    if (!Number.isNaN(d.getTime())) {
+      reportYear = d.getFullYear();
+      break;
+    }
+    const m = String(raw).match(/20\d{2}/);
+    if (m) {
+      reportYear = Number(m[0]);
+      break;
+    }
+  }
+  if (!reportYear && parsed.__year) reportYear = parsed.__year;
+
+  const summary = {
+    total_sessions: Math.round(siteSessions),
+    engaged_sessions: Math.round(siteEngaged),
+    total_users: Math.round(siteUsers),
+    new_users: Math.round(siteNewUsers),
+    new_user_rate: newUserRate,
+    engagement_rate: siteEngagementRate,
+    site_bounce_rate: siteBounce,
+    site_avg_bounce_rate: siteBounce,
+    organic_sessions: Math.round(organicSessions),
+    organic_bounce_rate: organicBounce,
+    direct_sessions: Math.round(directSessions),
+    direct_bounce_rate: directBounce,
+    contact_page_sessions: Math.round(contactPageSessions),
+    contact_session_share: contactSessionShare,
+    total_contact_submissions: contactClassified.length,
+    report_period: 'January – December',
+    report_year: reportYear || null,
+  };
+
+  // Bounce-rate page payload.
+  const bouncePayload = {
+    definition: 'Bounce Rate = 1 − (Engaged Sessions ÷ Total Sessions)',
+    by_channel: [...mediumAgg].sort((a, b) => num(b.sessions) - num(a.sessions)),
+    homepage_monthly: [],
+    high_bounce_opportunities: [],
+  };
+
+  if (pageAgg.length) {
+    bouncePayload.high_bounce_opportunities = [...pageAgg]
+      .filter(
+        (p) =>
+          num(p.sessions) >= OPPORTUNITY_MIN_SESSIONS &&
+          num(p.bounce_rate) >= OPPORTUNITY_MIN_BOUNCE,
+      )
+      .sort((a, b) => num(b.sessions) - num(a.sessions));
+  }
+
+  if (pageRecords.length) {
+    const homepageLong = pageRecords.filter((r) => {
+      const p = String(r.Page || '').trim();
+      return p === '/' || p === '/index' || p === '/home';
+    });
+    if (homepageLong.length) {
+      bouncePayload.homepage_monthly = monthlyTotals(homepageLong);
+    }
+  }
+
+  const userSum = userSummary(usersDf);
+
+  let confirmedBotSessions = 0;
+  let likelyBotSessions = 0;
+  let suspiciousSessions = 0;
+  let humanSessions = 0;
+  for (const c of cityAgg) {
+    const s = num(c.sessions, 0);
+    if (c.bot_classification === 'confirmed_bot') confirmedBotSessions += s;
+    else if (c.bot_classification === 'likely_bot') likelyBotSessions += s;
+    else if (c.bot_classification === 'suspicious') suspiciousSessions += s;
+    else humanSessions += s;
+  }
+
+  const botsPayload = {
+    summary: {
+      confirmed_bot_sessions: Math.round(confirmedBotSessions),
+      likely_bot_sessions: Math.round(likelyBotSessions),
+      suspicious_sessions: Math.round(suspiciousSessions),
+      human_sessions: Math.round(humanSessions),
+      bot_user_ids: (userSum.confirmed_bot || 0) + (userSum.likely_bot || 0),
+      fractional_user_ids: userSum.fractional || 0,
+    },
+    cities: [...cityAgg].sort((a, b) => num(b.sessions) - num(a.sessions)).slice(0, 60),
+    sources: [...sourceAgg].sort((a, b) => num(b.sessions) - num(a.sessions)),
+    methodology: {
+      city_rules: [
+        'Avg engagement < 1.0s with > 50 sessions = +4',
+        'Avg engagement < 3.0s with > 30 sessions = +2',
+        'Bounce rate ≥ 90% = +4',
+        'Bounce rate ≥ 75% = +2',
+        'Return rate < 2% with > 50 sessions = +2',
+        'City in known datacenter list = +3',
+        'Events/session < 1 with > 20 sessions = +2',
+      ],
+      source_rules: [
+        'Avg engagement < 2.0s with > 20 sessions = +3',
+        'Bounce rate ≥ 90% with > 10 sessions = +4',
+        'Return rate < 1% with > 20 sessions = +2',
+        'Source in known spam list = +5',
+      ],
+      thresholds: {
+        confirmed_bot: '≥ 7',
+        likely_bot: '4 – 6',
+        suspicious: '2 – 3',
+        human: '0 – 1',
+      },
+    },
+  };
+
+  const pagesSorted = [...pageAgg].sort((a, b) => num(b.sessions) - num(a.sessions));
+  const unicorns = pagesSorted
+    .filter(
+      (p) =>
+        num(p.sessions) >= UNICORN_MIN_SESSIONS &&
+        num(p.bounce_rate) <= UNICORN_MAX_BOUNCE,
+    )
+    .sort((a, b) => num(a.bounce_rate) - num(b.bounce_rate));
+  const opportunities = pagesSorted.filter(
+    (p) =>
+      num(p.sessions) >= OPPORTUNITY_MIN_SESSIONS &&
+      num(p.bounce_rate) >= OPPORTUNITY_MIN_BOUNCE,
+  );
+
+  let contactMonthly = [];
+  if (pageRecords.length) {
+    const contactLong = pageRecords.filter((r) =>
+      String(r.Page || '').toLowerCase().includes('contact'),
+    );
+    if (contactLong.length) contactMonthly = monthlyTotals(contactLong);
+  }
+
+  const pagesPayload = {
+    top_pages: pagesSorted.slice(0, 25),
+    all_pages_count: pagesSorted.length,
+    contact_monthly: contactMonthly,
+  };
+
+  const sortedUsers = [...usersDf].sort(
+    (a, b) => num(b.total_sessions) - num(a.total_sessions),
+  );
+  const benchmarks = benchmarkUsers(usersDf);
+  const contactSum = contactSummary(contactClassified);
+
+  const insights = generateInsights({
+    summary,
+    bounce: bouncePayload,
+    sources: sourceAgg,
+    cities: cityAgg,
+    pages: pagesSorted,
+    users: sortedUsers,
+    contactInfo: { records: contactClassified, summary: contactSum },
+  });
+
+  const sortedSources = [...sourceAgg].sort((a, b) => num(b.sessions) - num(a.sessions));
+  const sortedDevices = [...deviceAgg].sort((a, b) => num(b.sessions) - num(a.sessions));
+  const sortedCities = [...cityAgg].sort((a, b) => num(b.sessions) - num(a.sessions));
+
+  const verification = runVerifier({
+    parsed,
+    rawTotals,
+    summary,
+    monthly,
+    mediumAgg,
+    sourceAgg,
+    deviceAgg,
+    pageAgg,
+  });
+
+  // Calculation accuracy matrix — every headline KPI computed from every
+  // available data sheet, plus any hand-typed KPI cells we found in the
+  // user's "Executive Summary"-style tabs.
+  const accuracy = runAccuracyCheck({
+    parsed,
+    analysisSheets,
+    summary,
+    monthly,
+    rawTotals,
+  });
+
+  // Decorate exposed rows with the Engagement Quality Score so every table
+  // and chart can pick it up without recomputing.
+  const sourcesWithEqs = decorateWithEqs(sortedSources);
+  const devicesWithEqs = decorateWithEqs(sortedDevices);
+  const citiesWithEqs = decorateWithEqs(sortedCities);
+  const pagesSortedWithEqs = decorateWithEqs(pagesSorted);
+  const unicornsWithEqs = decorateWithEqs(unicorns);
+  const opportunitiesWithEqs = decorateWithEqs(opportunities);
+
+  const pagesPayloadEnriched = {
+    ...pagesPayload,
+    top_pages: pagesSortedWithEqs.slice(0, 25),
+  };
+
+  const unique = runUniqueAnalytics({
+    summary,
+    monthly,
+    sources: sourcesWithEqs,
+    devices: devicesWithEqs,
+    cities: citiesWithEqs,
+    pages: pagesSortedWithEqs,
+    users: sortedUsers,
+    usersSummary: userSum,
+    bots: botsPayload,
+    contactsSummary: contactSum,
+    verification,
+    metadata: parsed?.metadata || {},
+  });
+
+  // Bounce-rate industry benchmark (Excellent / Good / Average / Poor) plus
+  // dataset-specific recommendations.
+  const benchmark = runBounceBenchmark({
+    summary,
+    bounce: bouncePayload,
+    monthly,
+    pages: { top_pages: pagesSortedWithEqs.slice(0, 50) },
+    bots: botsPayload.summary,
+    unicorns: unicornsWithEqs,
+  });
+  bouncePayload.benchmark = benchmark;
+
+  return {
+    summary,
+    monthly,
+    bounce: bouncePayload,
+    sources: sourcesWithEqs,
+    devices: devicesWithEqs,
+    cities: citiesWithEqs,
+    pages: pagesPayloadEnriched,
+    unicorns: unicornsWithEqs,
+    opportunities: opportunitiesWithEqs,
+    users: sortedUsers,
+    users_summary: userSum,
+    users_benchmarks: benchmarks,
+    contacts: contactClassified,
+    contacts_summary: contactSum,
+    bots: botsPayload,
+    insights,
+    verification,
+    accuracy,
+    raw_totals: rawTotals,
+    unique,
+  };
+}
