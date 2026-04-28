@@ -102,6 +102,55 @@ to confirm the wide-to-long reshape and aggregations still match SKILL.md.
 
 ---
 
+## Deploy to Netlify
+
+The dashboard is a pure client-side SPA, so Netlify hosting is essentially
+free and zero-config. The repo already includes:
+
+- `netlify.toml` — sets `npm run build` as the build command, `dist` as the
+  publish directory, Node 20, the SPA fallback redirect, and asset cache
+  headers.
+- `public/_redirects` — duplicates the SPA fallback so React Router routes
+  (`/upload`, `/bounce`, etc.) keep working on a hard refresh.
+
+### Option A — Connect the GitHub repo (recommended)
+
+1. Push your latest commit to GitHub.
+2. In Netlify: **Add new site → Import an existing project → GitHub →
+   `CartezDew/leap_frog`**.
+3. Accept the defaults (Netlify reads `netlify.toml`):
+   - Build command: `npm run build`
+   - Publish directory: `dist`
+4. Click **Deploy site**. Every push to `main` will trigger a new deploy.
+
+### Option B — Drag-and-drop deploy
+
+1. Run `npm run build` locally.
+2. Open <https://app.netlify.com/drop> and drop the generated `dist/` folder
+   onto the page.
+
+### Option C — Netlify CLI
+
+```bash
+npm install -g netlify-cli
+netlify login
+netlify init      # link the repo to a new or existing Netlify site
+netlify deploy --build --prod
+```
+
+### About the `Upload DATA/` folder
+
+`Upload DATA/*.xlsx` is git-ignored (client data stays off GitHub), so those
+files will not exist during a Netlify build. That is fine — the dashboard
+prompts the user to drop their own GA4 export on the Upload page. The custom
+Vite plugin (`vite-plugins/upload-data.js`) simply emits an empty manifest
+when the folder is empty, so the build still succeeds.
+
+If you want a sample workbook to ship with the deployed site, copy it into
+`Upload DATA/` and commit it (or add it to a separate, non-ignored folder).
+
+---
+
 ## How It Works
 
 1. Open the dashboard. With no data, the home page shows an empty state with a

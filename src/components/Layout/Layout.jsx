@@ -1,5 +1,6 @@
 import { Outlet } from 'react-router-dom';
 
+import { AIChat } from '../AIChat/AIChat.jsx';
 import { Sidebar } from '../Sidebar/Sidebar.jsx';
 
 function AmbientOrbs() {
@@ -24,6 +25,7 @@ export function Layout() {
           </main>
         </div>
       </div>
+      <AIChat />
     </>
   );
 }

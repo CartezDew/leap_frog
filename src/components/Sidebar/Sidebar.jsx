@@ -1,5 +1,8 @@
+import { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
+  LuChevronLeft,
+  LuChevronRight,
   LuLayoutDashboard,
   LuLightbulb,
   LuTrendingDown,
@@ -26,6 +29,8 @@ const NAV_ITEMS = [
   { to: '/contact', label: 'Contact Form Intel', icon: LuMail, requires: 'contacts' },
   { to: '/bots', label: 'Bot Traffic Intelligence', icon: LuShieldAlert, requires: 'bots' },
 ];
+
+const COLLAPSED_STORAGE_KEY = 'lf:sidebar-collapsed';
 
 function sectionHasData(analyzed, key) {
   if (!analyzed) return false;
@@ -56,35 +61,100 @@ function sectionHasData(analyzed, key) {
 export function Sidebar() {
   const { analyzed, hasData, filename, fileCount, uploadedAt, clear } = useData();
 
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return window.localStorage.getItem(COLLAPSED_STORAGE_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  // Sync the collapsed state to a root data attribute so global CSS (e.g. the
+  // main content margin) can react via the --sidebar-width custom property.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    document.documentElement.dataset.sidebarCollapsed = collapsed ? 'true' : 'false';
+    try {
+      window.localStorage.setItem(COLLAPSED_STORAGE_KEY, String(collapsed));
+    } catch {
+      // ignore storage failures
+    }
+  }, [collapsed]);
+
+  const uploadLabel = hasData ? 'Upload / Replace Data' : 'Upload Data';
+
   return (
-    <aside className="sidebar" aria-label="Primary navigation">
+    <aside
+      className={`sidebar${collapsed ? ' sidebar--collapsed' : ''}`}
+      aria-label="Primary navigation"
+      data-collapsed={collapsed ? 'true' : 'false'}
+    >
       <div className="sidebar__brand">
-        <img
-          src={mainLogo}
-          alt="Leapfrog Services"
-          className="sidebar__brand-icon"
-        />
-        <div className="sidebar__brand-text">
-          <div className="sidebar__brand-mark">Leapfrog Services</div>
-          <h1 className="sidebar__brand-title">
-            Analytics <em>Dashboard</em>
-          </h1>
-          <p className="sidebar__brand-subtitle">GA4 insight engine</p>
+        <div className="sidebar__brand-main">
+          <div className="sidebar__brand-mark">
+            <img
+              src={mainLogo}
+              alt="Leapfrog"
+              className="sidebar__brand-icon"
+            />
+          </div>
+          <div className="sidebar__brand-text">
+            <h1 className="sidebar__brand-title">
+              Analytics <em>Dashboard</em>
+            </h1>
+          </div>
         </div>
+        <div className="sidebar__brand-meta">
+          <p className="sidebar__brand-eyebrow">Insight Engine Reports</p>
+          <div
+            className="sidebar__brand-sources"
+            aria-label="Report file types: GA4 and Semrush"
+          >
+            <span className="sidebar__brand-pill sidebar__brand-pill--ga4">
+              GA4 Report
+            </span>
+            <span className="sidebar__brand-pill sidebar__brand-pill--semrush">
+              Semrush Report
+            </span>
+          </div>
+        </div>
+        <p className="sidebar__brand-mini-title" aria-hidden="true">
+          Analytics
+          <em>Dashboard</em>
+        </p>
       </div>
 
       <nav className="sidebar__nav">
-        <div className="sidebar__nav-section">Upload</div>
+        <div className="sidebar__nav-header">
+          <div className="sidebar__nav-section">Upload</div>
+          <button
+            type="button"
+            className="sidebar__toggle"
+            onClick={() => setCollapsed((c) => !c)}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-expanded={!collapsed}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {collapsed ? (
+              <LuChevronRight size={14} />
+            ) : (
+              <LuChevronLeft size={14} />
+            )}
+          </button>
+        </div>
         <NavLink
           to="/upload"
           className={({ isActive }) =>
             `sidebar__nav-link${isActive ? ' is-active' : ''}`
           }
+          title={collapsed ? uploadLabel : undefined}
+          aria-label={uploadLabel}
         >
           <span className="sidebar__nav-icon">
             <LuUpload size={18} />
           </span>
-          {hasData ? 'Upload / Replace Data' : 'Upload Data'}
+          <span className="sidebar__nav-label">{uploadLabel}</span>
         </NavLink>
 
         <div className="sidebar__nav-section">Analysis</div>
@@ -102,12 +172,14 @@ export function Sidebar() {
                 }`
               }
               aria-disabled={!enabled}
+              aria-label={item.label}
               tabIndex={enabled ? 0 : -1}
+              title={collapsed ? item.label : undefined}
             >
               <span className="sidebar__nav-icon">
                 <Icon size={18} />
               </span>
-              {item.label}
+              <span className="sidebar__nav-label">{item.label}</span>
             </NavLink>
           );
         })}

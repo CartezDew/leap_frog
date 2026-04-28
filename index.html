@@ -2,7 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/webp" href="/bus-frog.webp" />
+    <link rel="apple-touch-icon" href="/bus-frog.webp" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Leapfrog Services Analytics Dashboard" />
     <title>Leapfrog Analytics Dashboard</title>
@@ -12,6 +13,17 @@
       href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
+    <script>
+      // Sync persisted sidebar collapsed state before React mounts so the
+      // layout boots into the correct width without a flash of expanded UI.
+      (function () {
+        try {
+          var v = window.localStorage.getItem('lf:sidebar-collapsed');
+          document.documentElement.dataset.sidebarCollapsed =
+            v === 'true' ? 'true' : 'false';
+        } catch (_) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
