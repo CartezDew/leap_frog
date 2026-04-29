@@ -110,63 +110,71 @@ export function Sidebar() {
         <div className="sidebar__divider" aria-hidden="true" />
 
         <nav className="sidebar__nav">
-          <div className="sidebar__nav-header">
-            <div className="sidebar__nav-section">Upload</div>
-            <button
-              type="button"
-              className="sidebar__toggle"
-              onClick={() => setCollapsed((c) => !c)}
-              aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-              aria-expanded={!collapsed}
-              title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            >
-              {collapsed ? (
-                <LuChevronRight size={14} />
-              ) : (
-                <LuChevronLeft size={14} />
-              )}
-            </button>
-          </div>
-          <NavLink
-            to="/upload"
-            className={({ isActive }) =>
-              `sidebar__nav-link${isActive ? ' is-active' : ''}`
-            }
-            title={collapsed ? uploadLabel : undefined}
-            aria-label={uploadLabel}
-          >
-            <span className="sidebar__nav-icon">
-              <LuUpload size={18} />
-            </span>
-            <span className="sidebar__nav-label">{uploadLabel}</span>
-          </NavLink>
-
-          <div className="sidebar__nav-section">Analysis</div>
-          {NAV_ITEMS.map((item) => {
-            const Icon = item.icon;
-            const enabled = hasData && sectionHasData(analyzed, item.requires);
-            return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.to === '/'}
-                className={({ isActive }) =>
-                  `sidebar__nav-link${isActive ? ' is-active' : ''}${
-                    enabled ? '' : ' is-disabled'
-                  }`
-                }
-                aria-disabled={!enabled}
-                aria-label={item.label}
-                tabIndex={enabled ? 0 : -1}
-                title={collapsed ? item.label : undefined}
+          <div className="sidebar__nav-static">
+            <div className="sidebar__nav-header">
+              <div className="sidebar__nav-section">Upload</div>
+              <button
+                type="button"
+                className="sidebar__toggle"
+                onClick={() => setCollapsed((c) => !c)}
+                aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                aria-expanded={!collapsed}
+                title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
               >
-                <span className="sidebar__nav-icon">
-                  <Icon size={18} />
-                </span>
-                <span className="sidebar__nav-label">{item.label}</span>
-              </NavLink>
-            );
-          })}
+                {collapsed ? (
+                  <LuChevronRight size={14} />
+                ) : (
+                  <LuChevronLeft size={14} />
+                )}
+              </button>
+            </div>
+            <NavLink
+              to="/upload"
+              className={({ isActive }) =>
+                `sidebar__nav-link${isActive ? ' is-active' : ''}`
+              }
+              title={collapsed ? uploadLabel : undefined}
+              aria-label={uploadLabel}
+            >
+              <span className="sidebar__nav-icon">
+                <LuUpload size={18} />
+              </span>
+              <span className="sidebar__nav-label">{uploadLabel}</span>
+            </NavLink>
+          </div>
+
+          <div
+            className="sidebar__nav-scroll"
+            role="region"
+            aria-label="Analysis reports"
+          >
+            <div className="sidebar__nav-section">Analysis</div>
+            {NAV_ITEMS.map((item) => {
+              const Icon = item.icon;
+              const enabled = hasData && sectionHasData(analyzed, item.requires);
+              return (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.to === '/'}
+                  className={({ isActive }) =>
+                    `sidebar__nav-link${isActive ? ' is-active' : ''}${
+                      enabled ? '' : ' is-disabled'
+                    }`
+                  }
+                  aria-disabled={!enabled}
+                  aria-label={item.label}
+                  tabIndex={enabled ? 0 : -1}
+                  title={collapsed ? item.label : undefined}
+                >
+                  <span className="sidebar__nav-icon">
+                    <Icon size={18} />
+                  </span>
+                  <span className="sidebar__nav-label">{item.label}</span>
+                </NavLink>
+              );
+            })}
+          </div>
         </nav>
       </div>
 

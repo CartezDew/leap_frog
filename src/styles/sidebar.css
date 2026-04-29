@@ -35,8 +35,7 @@
   display: flex;
   flex-direction: column;
   padding: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
   z-index: 100;
   border-right: 1px solid rgba(255, 255, 255, 0.05);
   box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.03);
@@ -49,6 +48,7 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .sidebar__divider {
@@ -69,7 +69,7 @@
    label and report types centered below.                                  */
 .sidebar__brand {
   position: relative;
-  padding: 18px 18px 16px;
+  padding: 22px 18px 22px;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -78,38 +78,10 @@
   isolation: isolate;
 }
 
-.sidebar__brand::before {
-  content: '';
-  position: absolute;
-  top: -70px;
-  right: -60px;
-  width: 220px;
-  height: 220px;
-  background: radial-gradient(
-    circle,
-    rgba(154, 202, 60, 0.18) 0%,
-    transparent 65%
-  );
-  filter: blur(4px);
-  pointer-events: none;
-  z-index: -1;
-}
-
+/* No ::before/::after — avoids extra radial gradients behind the brand block. */
+.sidebar__brand::before,
 .sidebar__brand::after {
-  content: '';
-  position: absolute;
-  bottom: -60px;
-  left: -50px;
-  width: 200px;
-  height: 200px;
-  background: radial-gradient(
-    circle,
-    rgba(139, 92, 246, 0.22) 0%,
-    transparent 70%
-  );
-  filter: blur(4px);
-  pointer-events: none;
-  z-index: -1;
+  content: none;
 }
 
 .sidebar__brand-main {
@@ -442,9 +414,71 @@
 }
 
 .sidebar__nav {
-  padding: 10px 0 12px;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 0 0;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
+}
+
+.sidebar__nav-static {
+  flex-shrink: 0;
+}
+
+.sidebar__nav-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 12px;
+
+  /* Firefox */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(154, 202, 60, 0.45) transparent;
+}
+
+/* WebKit / Blink (Chrome, Safari, Edge) */
+.sidebar__nav-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.sidebar__nav-scroll::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 4px 0;
+}
+
+.sidebar__nav-scroll::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    180deg,
+    rgba(154, 202, 60, 0.55) 0%,
+    rgba(139, 92, 246, 0.55) 100%
+  );
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background 0.15s ease;
+}
+
+.sidebar__nav-scroll::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(
+    180deg,
+    rgba(182, 224, 74, 0.85) 0%,
+    rgba(167, 139, 250, 0.85) 100%
+  );
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+
+.sidebar__nav-scroll::-webkit-scrollbar-thumb:active {
+  background: var(--brand-green);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+
+.sidebar__nav-scroll::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 .sidebar__nav-section {
@@ -492,10 +526,15 @@
 }
 
 .sidebar__footer {
+  flex-shrink: 0;
+  position: relative;
+  z-index: 2;
   padding: 16px 24px;
   font-size: 11px;
   color: rgba(255, 255, 255, 0.45);
   border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: #1a0f33;
+  box-shadow: 0 -10px 28px rgba(10, 6, 20, 0.45);
 }
 
 .sidebar__file {

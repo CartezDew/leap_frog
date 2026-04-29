@@ -30,13 +30,20 @@ function StartRedirect() {
   return <Navigate to="/" replace />;
 }
 
+function HomeOrUpload() {
+  const { hydrated, hasData } = useData();
+  if (!hydrated) return null;
+  if (!hasData) return <Navigate to="/upload" replace />;
+  return <Home />;
+}
+
 export function App() {
   return (
     <>
       <ScrollToTop />
       <Routes>
         <Route element={<Layout />}>
-          <Route path="/" element={<Home />} />
+          <Route path="/" element={<HomeOrUpload />} />
           <Route path="/about" element={<About />} />
           <Route path="/overview" element={<ExecutiveSummary />} />
           <Route path="/upload" element={<UploadPage />} />
