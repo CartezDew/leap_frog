@@ -13,29 +13,47 @@ import {
   LuMail,
   LuShieldAlert,
   LuUpload,
+  LuSearch,
 } from 'react-icons/lu';
 
 import { useData } from '../../context/DataContext.jsx';
 
+// Each nav item declares which report family powers it:
+//   needs: 'ga4'    → only enabled when a GA4 Excel workbook is uploaded
+//   needs: 'semrush'→ only enabled when a Semrush PDF is uploaded
+//   needs: 'either' → enabled when either report type is uploaded
 const NAV_ITEMS = [
-  { to: '/overview', label: 'Overview', icon: LuLayoutDashboard, requires: 'summary' },
-  { to: '/insights', label: 'Actionable Insights', icon: LuLightbulb, requires: 'insights' },
-  { to: '/bounce', label: 'Bounce Rate', icon: LuTrendingDown, requires: 'bounce' },
-  { to: '/users', label: 'User ID Engagement', icon: LuUsers, requires: 'users' },
-  { to: '/sources', label: 'Traffic Sources', icon: LuRadio, requires: 'sources' },
-  { to: '/pages', label: 'Page Path Analysis', icon: LuFileText, requires: 'pages' },
-  { to: '/unicorns', label: 'Unicorn Pages', icon: LuSparkles, requires: 'unicorns' },
-  { to: '/contact', label: 'Contact Form Intel', icon: LuMail, requires: 'contacts' },
-  { to: '/bots', label: 'Bot Traffic Intelligence', icon: LuShieldAlert, requires: 'bots' },
+  { to: '/overview',  label: 'Overview',                 icon: LuLayoutDashboard, requires: 'summary',  needs: 'either'  },
+  { to: '/insights',  label: 'Actionable Insights',      icon: LuLightbulb,       requires: 'insights', needs: 'ga4'     },
+  { to: '/keywords',  label: 'Keywords (Semrush)',       icon: LuSearch,          requires: 'keywords', needs: 'semrush' },
+  { to: '/bounce',    label: 'Bounce Rate',              icon: LuTrendingDown,    requires: 'bounce',   needs: 'ga4'     },
+  { to: '/users',     label: 'User ID Engagement',       icon: LuUsers,           requires: 'users',    needs: 'ga4'     },
+  { to: '/sources',   label: 'Traffic Sources',          icon: LuRadio,           requires: 'sources',  needs: 'ga4'     },
+  { to: '/pages',     label: 'Page Path Analysis',       icon: LuFileText,        requires: 'pages',    needs: 'ga4'     },
+  { to: '/unicorns',  label: 'Unicorn Pages',            icon: LuSparkles,        requires: 'unicorns', needs: 'ga4'     },
+  { to: '/contact',   label: 'Contact Form Intel',       icon: LuMail,            requires: 'contacts', needs: 'ga4'     },
+  { to: '/bots',      label: 'Bot Traffic Intelligence', icon: LuShieldAlert,     requires: 'bots',     needs: 'ga4'     },
 ];
 
 const COLLAPSED_STORAGE_KEY = 'lf:sidebar-collapsed';
 
+// Has the right *kind* of report been uploaded for this nav item?
+function meetsTypePrereq(needs, hasGA4, hasSemrush) {
+  if (needs === 'ga4') return hasGA4;
+  if (needs === 'semrush') return hasSemrush;
+  if (needs === 'either') return hasGA4 || hasSemrush;
+  return false;
+}
+
+// Even when the right file type is uploaded, we still require the analyzer
+// to have produced the section's data before lighting up the link.
+// `summary` and `keywords` are special: their type prereq is the only gate
+// that matters — uploading the right file is enough to unlock the page.
 function sectionHasData(analyzed, key) {
   if (!analyzed) return false;
   switch (key) {
     case 'summary':
-      return Boolean(analyzed.summary);
+      return true;
     case 'insights':
       return Array.isArray(analyzed.insights) && analyzed.insights.length > 0;
     case 'bounce':
@@ -51,14 +69,27 @@ function sectionHasData(analyzed, key) {
     case 'contacts':
       return Array.isArray(analyzed.contacts);
     case 'bots':
-      return Boolean(analyzed.bots);
+      return Boolean(
+        analyzed.bots?.cities?.length || analyzed.bots?.sources?.length,
+      );
+    case 'keywords':
+      return true;
     default:
       return true;
   }
 }
 
 export function Sidebar() {
-  const { analyzed, hasData, filename, fileCount, uploadedAt, clear } = useData();
+  const {
+    analyzed,
+    hasData,
+    hasGA4,
+    hasSemrush,
+    filename,
+    fileCount,
+    uploadedAt,
+    clear,
+  } = useData();
 
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false;
@@ -151,7 +182,25 @@ export function Sidebar() {
             <div className="sidebar__nav-section">Analysis</div>
             {NAV_ITEMS.map((item) => {
               const Icon = item.icon;
-              const enabled = hasData && sectionHasData(analyzed, item.requires);
+              const typeOk = meetsTypePrereq(item.needs, hasGA4, hasSemrush);
+              const enabled =
+                hasData && typeOk && sectionHasData(analyzed, item.requires);
+
+              // Tooltip explains *why* an item is greyed out so users know
+              // which report to upload to unlock it.
+              let tooltip;
+              if (enabled) {
+                tooltip = collapsed ? item.label : undefined;
+              } else if (!typeOk && item.needs === 'ga4') {
+                tooltip = `${item.label} — upload a GA4 Excel report to enable.`;
+              } else if (!typeOk && item.needs === 'semrush') {
+                tooltip = `${item.label} — upload a Semrush PDF to enable.`;
+              } else if (!typeOk) {
+                tooltip = `${item.label} — upload a GA4 Excel or Semrush PDF to enable.`;
+              } else {
+                tooltip = `${item.label} — uploaded data didn't include the required section.`;
+              }
+
               return (
                 <NavLink
                   key={item.to}
@@ -165,7 +214,7 @@ export function Sidebar() {
                   aria-disabled={!enabled}
                   aria-label={item.label}
                   tabIndex={enabled ? 0 : -1}
-                  title={collapsed ? item.label : undefined}
+                  title={tooltip}
                 >
                   <span className="sidebar__nav-icon">
                     <Icon size={18} />
@@ -191,7 +240,7 @@ export function Sidebar() {
             </button>
           </>
         ) : (
-          <p>Upload an Excel export to populate the dashboard.</p>
+          <p>Upload a GA4 Excel export and/or a Semrush PDF to populate the dashboard.</p>
         )}
       </div>
     </aside>

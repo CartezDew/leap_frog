@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { LuCloudUpload, LuFileSpreadsheet } from 'react-icons/lu';
+import { LuCloudUpload, LuFileSpreadsheet, LuFileText } from 'react-icons/lu';
 
 import { useData } from '../../context/DataContext.jsx';
 
@@ -87,11 +87,12 @@ export function UploadZone() {
           ? 'Adding to batch…'
           : analyzeStatus === 'analyzing'
             ? 'Analyzing batch…'
-            : 'Drop GA4 & Semrush Excel files here'}
+            : 'Drop GA4 Excel files & Semrush PDFs here'}
       </h2>
       <p className="upload-zone__sub">
-        <LuFileSpreadsheet size={14} /> .xlsx or .xls — GA4 exports and Semrush
-        reports. Drop one or many; the analyzer runs once on the merged batch
+        <LuFileSpreadsheet size={14} /> .xlsx / .xls — GA4 exports.&nbsp;
+        <LuFileText size={14} /> .pdf — Semrush "Organic Performance" reports.
+        Drop one or many; the analyzer runs once on the merged batch
         (50 MB combined max).
       </p>
       {!busy && (
@@ -116,7 +117,7 @@ export function UploadZone() {
       <input
         ref={inputRef}
         type="file"
-        accept=".xlsx,.xls"
+        accept=".xlsx,.xls,.pdf"
         className="upload-input"
         multiple
         onChange={onChange}

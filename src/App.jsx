@@ -10,6 +10,7 @@ import { BounceRate } from './pages/BounceRate.jsx';
 import { ContactFormIntel } from './pages/ContactFormIntel.jsx';
 import { ExecutiveSummary } from './pages/ExecutiveSummary.jsx';
 import { Home } from './pages/Home.jsx';
+import { Keywords } from './pages/Keywords/Keywords.jsx';
 import { PagePathAnalysis } from './pages/PagePathAnalysis.jsx';
 import { TrafficSources } from './pages/TrafficSources.jsx';
 import { UnicornPages } from './pages/UnicornPages.jsx';
@@ -48,6 +49,7 @@ export function App() {
           <Route path="/overview" element={<ExecutiveSummary />} />
           <Route path="/upload" element={<UploadPage />} />
           <Route path="/insights" element={<ActionableInsights />} />
+          <Route path="/keywords" element={<Keywords />} />
           <Route path="/bounce" element={<BounceRate />} />
           <Route path="/users" element={<UserEngagement />} />
           <Route path="/sources" element={<TrafficSources />} />

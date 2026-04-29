@@ -10,10 +10,11 @@ import {
   Legend,
   Cell,
 } from 'recharts';
-import { LuTriangleAlert } from 'react-icons/lu';
+import { LuTriangleAlert, LuArrowRight, LuSearch } from 'react-icons/lu';
 
 import { PageHeader } from '../components/PageHeader/PageHeader.jsx';
 import { KpiStrip } from '../components/KpiStrip/KpiStrip.jsx';
+import { KpiCard } from '../components/KpiCard/KpiCard.jsx';
 import { ChartWrapper } from '../components/ChartWrapper/ChartWrapper.jsx';
 import { EmptyState } from '../components/EmptyState/EmptyState.jsx';
 import { TrustScore } from '../components/TrustScore/TrustScore.jsx';
@@ -22,10 +23,99 @@ import { AccuracyCheck } from '../components/AccuracyCheck/AccuracyCheck.jsx';
 import { TopInsightsTable } from '../components/TopInsightsTable/TopInsightsTable.jsx';
 import { BotAlertBanner } from '../components/BotAlertBanner/BotAlertBanner.jsx';
 import { useData } from '../context/DataContext.jsx';
+import { runKeywordAnalysis } from '../lib/keywordAnalyzer.js';
+import { formatInteger } from '../lib/formatters.js';
+
+// Semrush-only Overview: when the user has uploaded Semrush PDFs but no GA4
+// workbook, the GA4 KPI strip / monthly trend / trust score have nothing to
+// show. Surface a focused Semrush snapshot instead so the page is still
+// useful at-a-glance, with a clear CTA to upload GA4 to unlock the rest.
+function SemrushOnlyOverview({ analyzed, filename, uploadedAt }) {
+  const kw = runKeywordAnalysis(analyzed);
+  const latest = kw.trend.national[kw.trend.national.length - 1];
+  const syncedLabel = uploadedAt
+    ? `Synced ${new Date(uploadedAt).toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      })}`
+    : 'Live data';
+
+  return (
+    <>
+      <PageHeader
+        badge={syncedLabel}
+        title="Overview"
+        subtitle="Semrush snapshot — upload a GA4 Excel report to unlock the full executive dashboard."
+        meta={
+          filename ? (
+            <div className="page-meta__stamp">
+              Source
+              <strong>{filename}</strong>
+            </div>
+          ) : null
+        }
+      />
+
+      <div className="card-grid card-grid--cols-3">
+        <KpiCard
+          label="Keywords tracked"
+          value={formatInteger(latest?.tracked || 0)}
+          sub={`${formatInteger(latest?.ranked || 0)} ranked in top 100`}
+          accent="purple"
+        />
+        <KpiCard
+          label="Page-1 keywords"
+          value={formatInteger(latest?.top10 || 0)}
+          sub={`${formatInteger(latest?.top3 || 0)} in the top 3`}
+          accent="green"
+        />
+        <KpiCard
+          label="Avg national position"
+          value={
+            latest?.avg_position != null
+              ? `#${latest.avg_position.toFixed(1)}`
+              : '—'
+          }
+          sub={`Across ${formatInteger(kw.monthly.length)} monthly snapshot${kw.monthly.length === 1 ? '' : 's'}`}
+        />
+      </div>
+
+      <div className="empty-state">
+        <h2 className="empty-state__title">Want the full Overview?</h2>
+        <p className="empty-state__body">
+          The full executive dashboard (sessions, bounce rate, trust score,
+          anomalies, top insights) is built from a GA4 Excel export. Upload one
+          and re-run analysis to unlock it.
+        </p>
+        <div className="row-spread" style={{ gap: 12, justifyContent: 'center' }}>
+          <Link to="/upload" className="btn btn--primary">
+            Upload a GA4 report <LuArrowRight size={14} />
+          </Link>
+          <Link to="/keywords" className="btn btn--secondary">
+            <LuSearch size={14} /> Open Keywords Intelligence
+          </Link>
+        </div>
+      </div>
+    </>
+  );
+}
 
 export function ExecutiveSummary() {
-  const { hasData, analyzed, filename, uploadedAt } = useData();
+  const { hasData, hasGA4, analyzed, filename, uploadedAt } = useData();
   if (!hasData || !analyzed) return <EmptyState />;
+
+  // Semrush-only fall-through: render a keyword-focused Overview rather
+  // than a GA4 dashboard full of zeros.
+  if (!hasGA4) {
+    return (
+      <SemrushOnlyOverview
+        analyzed={analyzed}
+        filename={filename}
+        uploadedAt={uploadedAt}
+      />
+    );
+  }
 
   const { summary, monthly, insights, verification, unique, accuracy, bots } = analyzed;
   const trust = unique?.trust;

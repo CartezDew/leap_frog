@@ -5,7 +5,7 @@ import { useData } from '../../context/DataContext.jsx';
 
 export function EmptyState({
   title = 'No data uploaded yet',
-  body = 'Upload your GA4 property export and Semrush report as Excel workbooks (.xlsx or .xls), then run analysis — together they populate this dashboard.',
+  body = 'Upload your GA4 (Excel or CSV) and/or Semrush (PDF) reports, then run analysis — together they populate this dashboard.',
   cta = { to: '/upload', label: 'Go to Upload' },
   icon: Icon = LuFolderOpen,
   /** Use `start` when `body` is long diagnostics (lists); default centers short copy. */
@@ -41,5 +41,41 @@ export function EmptyState({
         </Link>
       )}
     </div>
+  );
+}
+
+/**
+ * Convenience preset: shown on a GA4-driven page (Insights, Bounce, Users…)
+ * when the user has only uploaded a Semrush PDF and not a GA4 workbook.
+ */
+export function NeedsGA4EmptyState({
+  pageLabel = 'This report',
+  icon = LuFolderOpen,
+}) {
+  return (
+    <EmptyState
+      icon={icon}
+      title={`${pageLabel} needs a GA4 report`}
+      body={`${pageLabel} is built from a GA4 Excel export. Upload your GA4 workbook (.xlsx / .xls) and re-run analysis to unlock this view.`}
+      cta={{ to: '/upload', label: 'Upload a GA4 report' }}
+    />
+  );
+}
+
+/**
+ * Convenience preset: shown on the Keywords page when the user has only
+ * uploaded a GA4 workbook and not a Semrush PDF.
+ */
+export function NeedsSemrushEmptyState({
+  pageLabel = 'Keywords Intelligence',
+  icon = LuFolderOpen,
+}) {
+  return (
+    <EmptyState
+      icon={icon}
+      title={`${pageLabel} needs a Semrush report`}
+      body={`${pageLabel} is built from Semrush "Organic Performance" PDF exports. Upload one or more Semrush PDFs and re-run analysis to unlock this view.`}
+      cta={{ to: '/upload', label: 'Upload a Semrush PDF' }}
+    />
   );
 }

@@ -248,7 +248,7 @@ export const MULTI_MONTH_MIN_RATE = 0.5;
 
 // Upload limits.
 export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
-export const ALLOWED_UPLOAD_EXTENSIONS = ['.xlsx', '.xls'];
+export const ALLOWED_UPLOAD_EXTENSIONS = ['.xlsx', '.xls', '.pdf'];
 
 // Pre-built analysis sheet titles (passed through verbatim).
 export const ANALYSIS_SHEET_KEYWORDS = [

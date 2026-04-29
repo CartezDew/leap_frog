@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   LuPlus,
   LuFileSpreadsheet,
+  LuFileText,
   LuX,
   LuPlay,
   LuPause,
@@ -31,6 +32,8 @@ function StagedRow({ item, onRemove, busy }) {
           <LuTriangleAlert size={18} />
         ) : item.status === 'ready' ? (
           <LuCircleCheck size={18} />
+        ) : item.kind === 'semrush_pdf' ? (
+          <LuFileText size={18} />
         ) : (
           <LuFileSpreadsheet size={18} />
         )}
@@ -309,7 +312,7 @@ export function UploadStager() {
             ref={fileInputRef}
             type="file"
             multiple
-            accept=".xlsx,.xls"
+            accept=".xlsx,.xls,.pdf"
             className="upload-input"
             onChange={handleFileInput}
           />

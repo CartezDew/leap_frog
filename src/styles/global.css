@@ -7814,3 +7814,7 @@ a.story-card,
     transform: scale(1);
   }
 }
+
+/* Keywords (Semrush) page styles live in src/pages/Keywords/Keywords.css
+   and are co-located with the page component. */
+

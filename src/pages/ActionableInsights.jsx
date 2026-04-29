@@ -4,14 +4,16 @@ import {
   LuShieldAlert,
   LuSparkles,
   LuCheckCheck,
+  LuSearch,
 } from 'react-icons/lu';
 
 import { PageHeader } from '../components/PageHeader/PageHeader.jsx';
-import { EmptyState } from '../components/EmptyState/EmptyState.jsx';
+import { EmptyState, NeedsGA4EmptyState } from '../components/EmptyState/EmptyState.jsx';
 import { PriorityBadge } from '../components/StatusBadge/StatusBadge.jsx';
 import { StoryCards } from '../components/StoryCards/StoryCards.jsx';
 import { useData } from '../context/DataContext.jsx';
 import { formatInteger, formatPercent } from '../lib/formatters.js';
+import { runKeywordAnalysis } from '../lib/keywordAnalyzer.js';
 
 function num(v) {
   const n = Number(v);
@@ -213,9 +215,57 @@ function buildStoryCards(analyzed) {
   return [insightsCard, topPriorityCard, riskCard, opportunitiesCard];
 }
 
+function buildKeywordCard(analyzed) {
+  const kw = runKeywordAnalysis(analyzed);
+  const trend = kw.trend.national || [];
+  const latest = trend[trend.length - 1];
+  if (!latest) return null;
+
+  const quickWin = kw.insights.quick_wins[0];
+  const mover = kw.insights.movers[0];
+  const decliner = kw.insights.decliners[0];
+  const headlineParts = [];
+  if (mover) {
+    headlineParts.push(
+      `${mover.keyword} climbed to #${mover.latest.position}`,
+    );
+  } else if (quickWin) {
+    headlineParts.push(
+      `${quickWin.keyword} is one push from page 1 (#${quickWin.latest.position})`,
+    );
+  }
+  const tone =
+    decliner && decliner.mom_delta < -10 ? 'amber' : mover ? 'green' : 'purple';
+
+  return {
+    id: 'keyword-intel',
+    tone,
+    icon: LuSearch,
+    label: 'SEO keyword intel',
+    value: `${formatInteger(latest.top10)} on page 1`,
+    headline:
+      headlineParts.length > 0
+        ? headlineParts.join('. ')
+        : `${formatInteger(latest.tracked)} keywords tracked across Semrush exports.`,
+    caption: `Avg national position #${(latest.avg_position || 0).toFixed(1)} · est. value $${formatInteger(latest.est_monthly_value)}/mo`,
+    footer: kw.cross.underperforming.length
+      ? `${kw.cross.underperforming.length} ranked page${
+          kw.cross.underperforming.length === 1 ? '' : 's'
+        } bleeding visitors — fix on-page first`
+      : `${kw.cross.page_matches.length} keyword/landing-page match${
+          kw.cross.page_matches.length === 1 ? '' : 'es'
+        } found`,
+    to: '/keywords',
+    ctaLabel: 'Open Keyword Intel',
+  };
+}
+
 export function ActionableInsights() {
-  const { hasData, analyzed } = useData();
+  const { hasData, hasGA4, analyzed } = useData();
   if (!hasData || !analyzed) return <EmptyState />;
+  // Insights are derived from the GA4 Excel workbook; if only a Semrush PDF
+  // was uploaded there is nothing to show here.
+  if (!hasGA4) return <NeedsGA4EmptyState pageLabel="Actionable Insights" icon={LuLightbulb} />;
 
   const insights = analyzed.insights || [];
   const high = insights.filter((i) => i.priority === 'high');
@@ -225,6 +275,7 @@ export function ActionableInsights() {
   );
 
   const storyCards = buildStoryCards(analyzed);
+  const keywordCard = buildKeywordCard(analyzed);
 
   const Section = ({ title, list }) =>
     list.length ? (
@@ -263,6 +314,20 @@ export function ActionableInsights() {
           </>
         }
       />
+
+      {keywordCard && (
+        <StoryCards
+          cards={[keywordCard]}
+          columns={1}
+          eyebrow="Search · Semrush"
+          title={
+            <>
+              SEO momentum <em>connected</em> to your traffic
+            </>
+          }
+          ariaLabel="SEO keyword intelligence callout"
+        />
+      )}
 
       {insights.length === 0 ? (
         <div className="empty-state">

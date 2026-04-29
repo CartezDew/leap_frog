@@ -14,10 +14,18 @@ import { parseWorkbookBuffer } from './parser.js';
 import { runAllAnalysis } from './analyzer.js';
 import { generateValidationReport } from './validator.js';
 import { fetchUploadDataFile } from './uploadDataLibrary.js';
+import {
+  parseSemrushPdf,
+  consolidateSnapshots,
+} from './semrushPdfParser.js';
 
 function fileExtension(file) {
   const parts = String(file?.name || '').split('.');
   return parts.length > 1 ? `.${parts.pop().toLowerCase()}` : '';
+}
+
+function isPdf(filename) {
+  return fileExtension({ name: filename }) === '.pdf';
 }
 
 function readFileAsArrayBuffer(file, onProgress) {
@@ -43,7 +51,9 @@ function defer() {
 function checkExtension(filename) {
   const ext = fileExtension({ name: filename });
   if (!ALLOWED_UPLOAD_EXTENSIONS.includes(ext)) {
-    throw new Error(`Unsupported file type "${ext}". Use .xlsx or .xls.`);
+    throw new Error(
+      `Unsupported file type "${ext}". Use .xlsx, .xls, or .pdf (Semrush exports).`,
+    );
   }
 }
 
@@ -61,10 +71,28 @@ export async function parseFile(file, onProgress) {
   if (typeof onProgress === 'function') onProgress(0);
   const buffer = await readFileAsArrayBuffer(file, onProgress);
   await defer();
+
+  if (isPdf(file.name)) {
+    const snapshot = await parseSemrushPdf(buffer, file.name);
+    if (typeof onProgress === 'function') onProgress(100);
+    return {
+      kind: 'semrush_pdf',
+      semrushSnapshot: snapshot,
+      metadata: {
+        sheets_found: ['Semrush keyword PDF'],
+        warnings: [],
+      },
+      filename: file.name,
+      size: file.size,
+      source: 'file',
+    };
+  }
+
   const result = parseWorkbookBuffer(buffer, file.name);
   if (typeof onProgress === 'function') onProgress(100);
 
   return {
+    kind: 'workbook',
     parsed: result.parsed,
     analysisSheets: result.analysisSheets,
     metadata: result.metadata,
@@ -85,10 +113,29 @@ export async function parseFromUploadData(entry, onProgress) {
   if (typeof onProgress === 'function') onProgress(0);
   const buffer = await fetchUploadDataFile(entry.url);
   await defer();
+
+  if (isPdf(entry.name)) {
+    const snapshot = await parseSemrushPdf(buffer, entry.name);
+    if (typeof onProgress === 'function') onProgress(100);
+    return {
+      kind: 'semrush_pdf',
+      semrushSnapshot: snapshot,
+      metadata: {
+        sheets_found: ['Semrush keyword PDF'],
+        warnings: [],
+      },
+      filename: entry.name,
+      size: entry.size || (buffer && buffer.byteLength) || 0,
+      source: 'upload_data',
+      sourceUrl: entry.url,
+    };
+  }
+
   const result = parseWorkbookBuffer(buffer, entry.name);
   if (typeof onProgress === 'function') onProgress(100);
 
   return {
+    kind: 'workbook',
     parsed: result.parsed,
     analysisSheets: result.analysisSheets,
     metadata: result.metadata,
@@ -247,12 +294,45 @@ export function analyzeBatch(items) {
   const ready = items.filter(Boolean);
   if (ready.length === 0) throw new Error('No parsed files to analyze.');
 
-  const parsed = mergeParsed(ready);
-  const analysisSheets = mergeAnalysisSheets(ready);
+  // Split workbook (.xlsx/.xls) inputs from Semrush PDF inputs. PDFs feed a
+  // separate keyword pipeline and don't contribute to the GA4 analyzer.
+  const workbookItems = ready.filter((it) => it.kind !== 'semrush_pdf');
+  const pdfItems = ready.filter((it) => it.kind === 'semrush_pdf');
+
+  const parsed = mergeParsed(workbookItems);
+  const analysisSheets = mergeAnalysisSheets(workbookItems);
   const metadata = mergeMetadata(ready);
-  const rawTotals = mergeRawTotals(ready);
+  const rawTotals = mergeRawTotals(workbookItems);
   metadata.raw_totals = rawTotals;
-  const analyzed = runAllAnalysis(parsed, { rawTotals, analysisSheets });
+
+  // Run GA4 analysis if we have workbook data; otherwise produce a minimal
+  // payload so PDF-only uploads still yield a usable Keywords page.
+  let analyzed;
+  if (workbookItems.length > 0) {
+    analyzed = runAllAnalysis(parsed, { rawTotals, analysisSheets });
+  } else {
+    analyzed = {
+      summary: { report_period: '', total_sessions: 0 },
+      monthly: [],
+      sources: [],
+      pages: { top_pages: [], all_pages_count: 0, contact_monthly: [] },
+      bots: { summary: {}, cities: [], sources: [] },
+      insights: [],
+      unique: {},
+    };
+  }
+
+  // Bolt the consolidated Semrush snapshots onto the analyzed payload so
+  // the Keywords page can read them via the same `analyzed` object every
+  // other page consumes.
+  if (pdfItems.length > 0) {
+    analyzed.semrush_keywords = consolidateSnapshots(
+      pdfItems.map((it) => it.semrushSnapshot),
+    );
+  } else {
+    analyzed.semrush_keywords = [];
+  }
+
   const report = generateValidationReport(
     metadata,
     analyzed.verification,
@@ -264,6 +344,7 @@ export function analyzeBatch(items) {
     size: item.size,
     source: item.source,
     sourceUrl: item.sourceUrl || null,
+    kind: item.kind || 'workbook',
   }));
 
   const filenameLabel =
@@ -272,6 +353,15 @@ export function analyzeBatch(items) {
       : `${summary.length} files (${summary
           .map((s) => s.filename)
           .join(', ')})`;
+
+  // Roll up which kinds of reports made it into this batch so the UI can
+  // gate sidebar items / pages without re-inspecting `sourceFiles`.
+  const kinds = {
+    workbook_count: workbookItems.length,
+    semrush_pdf_count: pdfItems.length,
+    has_ga4: workbookItems.length > 0,
+    has_semrush: pdfItems.length > 0,
+  };
 
   return {
     parsed,
@@ -284,5 +374,6 @@ export function analyzeBatch(items) {
     filenameLabel,
     sourceFiles: summary,
     fileCount: summary.length,
+    kinds,
   };
 }

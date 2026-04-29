@@ -165,10 +165,12 @@ export function DataProvider({ children }) {
         updateStagedItem(id, {
           status: 'ready',
           progress: 100,
+          kind: parsed.kind || 'workbook',
           parsed: parsed.parsed,
           analysisSheets: parsed.analysisSheets,
           metadata: parsed.metadata,
           rawTotals: parsed.rawTotals || {},
+          semrushSnapshot: parsed.semrushSnapshot || null,
           size: parsed.size || file.size || 0,
         });
         return id;
@@ -214,10 +216,12 @@ export function DataProvider({ children }) {
         updateStagedItem(id, {
           status: 'ready',
           progress: 100,
+          kind: parsed.kind || 'workbook',
           parsed: parsed.parsed,
           analysisSheets: parsed.analysisSheets,
           metadata: parsed.metadata,
           rawTotals: parsed.rawTotals || {},
+          semrushSnapshot: parsed.semrushSnapshot || null,
           size: parsed.size || entry.size || 0,
         });
         return id;
@@ -277,6 +281,28 @@ export function DataProvider({ children }) {
   const stagedReadyCount = staged.filter((it) => it.status === 'ready').length;
   const stagedParsing = staged.some((it) => it.status === 'parsing');
 
+  // Derive which report types contributed to the current dataset. Older
+  // payloads (persisted before we tracked `kinds`) fall back to inspecting
+  // sourceFiles / parsed shape so the gating still behaves correctly after
+  // a hot-reload.
+  const kinds = useMemo(() => {
+    if (dataset?.kinds) return dataset.kinds;
+    const files = dataset?.sourceFiles || [];
+    const semrushFiles = files.filter(
+      (f) => f.kind === 'semrush_pdf' || /\.pdf$/i.test(f.filename || ''),
+    );
+    const workbookFiles = files.filter((f) => !semrushFiles.includes(f));
+    const semrushSnapshots = Array.isArray(dataset?.analyzed?.semrush_keywords)
+      ? dataset.analyzed.semrush_keywords
+      : [];
+    return {
+      workbook_count: workbookFiles.length,
+      semrush_pdf_count: semrushFiles.length,
+      has_ga4: workbookFiles.length > 0,
+      has_semrush: semrushFiles.length > 0 || semrushSnapshots.length > 0,
+    };
+  }, [dataset]);
+
   const value = useMemo(
     () => ({
       // dataset
@@ -291,6 +317,9 @@ export function DataProvider({ children }) {
       fileCount: dataset?.fileCount || (dataset ? 1 : 0),
       uploadedAt: dataset?.uploadedAt || null,
       hasData: Boolean(dataset?.analyzed),
+      hasGA4: Boolean(kinds?.has_ga4),
+      hasSemrush: Boolean(kinds?.has_semrush),
+      kinds,
       hydrated,
       analyzeStatus,
       error,
@@ -314,6 +343,7 @@ export function DataProvider({ children }) {
     }),
     [
       dataset,
+      kinds,
       hydrated,
       analyzeStatus,
       error,

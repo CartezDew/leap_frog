@@ -16,7 +16,19 @@ import path from 'node:path';
 const FOLDER = 'Upload DATA';
 const MANIFEST_PATH = '/__upload_data_manifest.json';
 const FILE_PREFIX = `/${FOLDER}/`;
-const ALLOWED_EXT = /\.(xlsx|xls)$/i;
+const ALLOWED_EXT = /\.(xlsx|xls|pdf)$/i;
+
+const CONTENT_TYPES = {
+  '.xlsx':
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.xls': 'application/vnd.ms-excel',
+  '.pdf': 'application/pdf',
+};
+
+function contentTypeFor(filename) {
+  const ext = path.extname(filename).toLowerCase();
+  return CONTENT_TYPES[ext] || 'application/octet-stream';
+}
 
 function listFiles(rootDir) {
   const dir = path.resolve(rootDir, FOLDER);
@@ -78,10 +90,7 @@ export function uploadDataPlugin() {
             res.end('Not found');
             return;
           }
-          res.setHeader(
-            'Content-Type',
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          );
+          res.setHeader('Content-Type', contentTypeFor(filename));
           res.setHeader(
             'Content-Disposition',
             `inline; filename="${encodeURIComponent(filename)}"`,

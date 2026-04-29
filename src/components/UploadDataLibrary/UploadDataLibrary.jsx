@@ -3,9 +3,14 @@ import {
   LuFolderOpen,
   LuRefreshCcw,
   LuFileSpreadsheet,
+  LuFileText,
   LuPlus,
   LuCheck,
 } from 'react-icons/lu';
+
+function isPdfName(name) {
+  return /\.pdf$/i.test(String(name || ''));
+}
 
 import { useData } from '../../context/DataContext.jsx';
 
@@ -69,8 +74,9 @@ export function UploadDataLibrary() {
             <LuFolderOpen size={18} /> Files in <span className="text-mono">Upload DATA/</span>
           </h2>
           <p className="section-subhead">
-            Drop <span className="text-mono">.xlsx</span> /{' '}
-            <span className="text-mono">.xls</span> exports into the project's{' '}
+            Drop GA4 <span className="text-mono">.xlsx</span> /{' '}
+            <span className="text-mono">.xls</span> exports or Semrush{' '}
+            <span className="text-mono">.pdf</span> reports into the project's{' '}
             <span className="text-mono">Upload DATA/</span> folder, then add as
             many as you'd like to the analysis batch below.
           </p>
@@ -116,7 +122,11 @@ export function UploadDataLibrary() {
               >
                 <div className="upload-library__meta">
                   <span className="upload-library__icon">
-                    <LuFileSpreadsheet size={18} />
+                    {isPdfName(entry.name) ? (
+                      <LuFileText size={18} />
+                    ) : (
+                      <LuFileSpreadsheet size={18} />
+                    )}
                   </span>
                   <div>
                     <p className="upload-library__name">{entry.name}</p>
