@@ -715,8 +715,7 @@
   .sidebar .sidebar__brand,
   .sidebar .sidebar__brand-meta,
   .sidebar .sidebar__divider,
-  .sidebar .sidebar__footer,
-  .sidebar .sidebar__toggle {
+  .sidebar .sidebar__footer {
     display: none;
   }
 
@@ -724,6 +723,16 @@
     padding: 12px 0 4px;
     justify-content: center;
     gap: 0;
+  }
+
+  .sidebar .sidebar__toggle {
+    display: inline-flex;
+    width: 34px;
+    height: 34px;
+    margin: 0;
+    border-color: rgba(154, 202, 60, 0.32);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--brand-green);
   }
 
   .sidebar .sidebar__nav {
@@ -783,5 +792,28 @@
   .sidebar .sidebar__nav-link[data-tooltip]::after,
   .sidebar .sidebar__nav-link[data-tooltip]::before {
     content: none;
+  }
+}
+
+@media (max-width: 500px) {
+  :root {
+    --sidebar-width-collapsed: 62px;
+  }
+
+  .sidebar .sidebar__nav-header {
+    padding: 10px 0 2px;
+  }
+
+  .sidebar .sidebar__toggle {
+    width: 30px;
+    height: 30px;
+  }
+
+  .sidebar .sidebar__nav-section {
+    margin: 10px 12px;
+  }
+
+  .sidebar .sidebar__nav-link {
+    padding: 11px 6px;
   }
 }

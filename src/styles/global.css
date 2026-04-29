@@ -1559,6 +1559,7 @@ a.page-meta__stamp:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  min-width: 0;
   padding: 12px 16px;
   border: 1px solid var(--border-light);
   border-radius: var(--radius-sm);
@@ -1592,6 +1593,7 @@ a.page-meta__stamp:focus-visible {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
@@ -1624,8 +1626,66 @@ a.page-meta__stamp:focus-visible {
 .upload-library__actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 8px;
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.upload-library__actions .btn {
+  min-width: max-content;
+}
+
+@media (max-width: 760px) {
+  .upload-library {
+    padding: 18px;
+  }
+
+  .upload-library__item {
+    align-items: flex-start;
+  }
+
+  .upload-library__actions {
+    max-width: 46%;
+  }
+}
+
+@media (max-width: 560px) {
+  .upload-library {
+    padding: 14px;
+  }
+
+  .upload-library__head {
+    gap: 12px;
+  }
+
+  .upload-library__head > .btn,
+  .upload-library__head > button {
+    width: 100%;
+  }
+
+  .upload-library__item {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .upload-library__meta {
+    align-items: flex-start;
+  }
+
+  .upload-library__actions {
+    justify-content: flex-start;
+    max-width: none;
+    width: 100%;
+  }
+
+  .upload-library__actions .btn {
+    width: 100%;
+    min-width: 0;
+  }
 }
 
 .synthetic-current-dataset {
@@ -2793,6 +2853,56 @@ input[type='file'].upload-input {
 
 .stager__resume {
   font-size: 13px;
+}
+
+@media (max-width: 560px) {
+  .stager {
+    padding: 18px;
+  }
+
+  .stager__head,
+  .stager__budget,
+  .stager__notice {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .stager__row {
+    grid-template-columns: 36px 1fr;
+    align-items: flex-start;
+  }
+
+  .stager__row-remove {
+    grid-column: 1 / -1;
+    justify-self: end;
+  }
+
+  .stager__row-name,
+  .stager__row-sub,
+  .stager__row-duplicate {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .stager__add {
+    align-items: flex-start;
+  }
+
+  .stager__actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .stager__run,
+  .stager__resume {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .stager__run-content {
+    justify-content: center;
+    width: 100%;
+  }
 }
 
 .upload-zone__error {
