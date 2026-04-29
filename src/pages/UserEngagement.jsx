@@ -438,6 +438,7 @@ export function UserEngagement() {
         rows={top50}
         hint="Top 50 by total sessions."
         defaultSort={{ key: 'total_sessions', dir: 'desc' }}
+        exportFileStem="user-engagement-top-users"
       />
 
       {multiMonth.length > 0 && (
@@ -451,6 +452,7 @@ export function UserEngagement() {
             rows={multiMonth}
             hint="Up to 50 shown."
             defaultSort={{ key: 'months_active', dir: 'desc' }}
+            exportFileStem="user-engagement-multi-month"
           />
         </>
       )}

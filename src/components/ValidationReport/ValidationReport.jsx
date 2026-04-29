@@ -135,12 +135,33 @@ function VerificationSection({ verification }) {
 export function ValidationReport({ report }) {
   if (!report) return null;
   const Icon = ICON_BY_STATUS[report.status] || LuCircleCheck;
+  const dupRemoved = report.duplicate_files_removed || [];
   return (
     <div className={`validation validation--${report.status}`}>
       <h3 className="validation__title">
         <Icon size={18} /> {TITLE_BY_STATUS[report.status] || 'Workbook loaded'}
       </h3>
       <p className="validation__message">{report.message}</p>
+
+      {dupRemoved.length > 0 && (
+        <div className="validation__duplicate-callout" role="status">
+          <strong>Duplicate files detected</strong>
+          <p>
+            {dupRemoved.length === 1
+              ? 'One file in your batch was byte-identical to another and was excluded from calculations. Only the first copy was merged into the dataset.'
+              : `${dupRemoved.length} files in your batch were byte-identical to an earlier file and were excluded from calculations. Only one copy of each unique file was merged.`}
+          </p>
+          <ul>
+            {dupRemoved.map((d, i) => (
+              <li key={i}>
+                <span className="text-mono">{d.filename}</span>
+                {' → matches '}
+                <span className="text-mono">{d.duplicateOf}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <VerificationSection verification={report.verification} />
 
@@ -184,17 +205,6 @@ export function ValidationReport({ report }) {
           <strong>Critical issues</strong>
           <ul>
             {report.critical_errors.map((w, i) => (
-              <li key={i}>{w}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {(report.data_gaps?.length || 0) > 0 && (
-        <div className="validation__warnings">
-          <strong>Optional fields not found</strong>
-          <ul>
-            {report.data_gaps.map((w, i) => (
               <li key={i}>{w}</li>
             ))}
           </ul>

@@ -16,6 +16,8 @@ import { Link } from 'react-router-dom';
 import { LuChevronDown, LuArrowRight, LuArrowUp, LuArrowDown } from 'react-icons/lu';
 
 import { CATEGORY_META } from '../../lib/insightEngine.js';
+import { downloadSheetAsXlsx, downloadTableAsPdf } from '../../lib/tableExport.js';
+import { VizExportToolbar } from '../VizExportToolbar/VizExportToolbar.jsx';
 
 function categoryFor(insight) {
   const cat = String(insight.category || '').toLowerCase();
@@ -144,6 +146,15 @@ export function TopInsightsTable({ insights }) {
     () => sortRows(decoratedRows, sortKey, sortDir),
     [decoratedRows, sortKey, sortDir],
   );
+
+  const exportInsightMatrix = useMemo(() => {
+    const headers = ['#', 'Insight finding', 'Evidence / data', 'Priority'];
+    const body = sortedRows.map(({ insight: ins, originalRank }) => {
+      const cat = categoryFor(ins);
+      return [originalRank, ins.title, ins.evidence, cat.label];
+    });
+    return { headers, body };
+  }, [sortedRows]);
 
   function onHeaderSort(column) {
     if (!SORT_COLUMNS.includes(column)) return;
@@ -327,6 +338,24 @@ export function TopInsightsTable({ insights }) {
           </tbody>
         </table>
       </div>
+      {rows.length > 5 && (
+        <div className="table-export-dock">
+          <span className="table-export-dock__label">Download table</span>
+          <VizExportToolbar
+            className="viz-export-toolbar--dock"
+            onXlsx={() => {
+              if (rows.length <= 5) return;
+              const { headers, body } = exportInsightMatrix;
+              downloadSheetAsXlsx('overview-top-insights', 'Insights', headers, body);
+            }}
+            onPdf={() => {
+              if (rows.length <= 5) return;
+              const { headers, body } = exportInsightMatrix;
+              downloadTableAsPdf('overview-top-insights', headers, body);
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }

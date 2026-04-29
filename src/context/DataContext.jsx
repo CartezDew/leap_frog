@@ -79,6 +79,8 @@ export function DataProvider({ children }) {
   const [siteCrawlStatus, setSiteCrawlStatus] = useState('idle'); // idle | crawling | ready | error
   const [siteCrawlError, setSiteCrawlError] = useState(null);
   const [error, setError] = useState(null);
+  /** Non-blocking notice (e.g. duplicate file content skipped at staging). */
+  const [uploadNotice, setUploadNotice] = useState(null);
   const [manifest, setManifest] = useState([]);
   const [manifestLoading, setManifestLoading] = useState(false);
 
@@ -143,10 +145,15 @@ export function DataProvider({ children }) {
     [],
   );
 
+  const dismissUploadNotice = useCallback(() => {
+    setUploadNotice(null);
+  }, []);
+
   const stageFile = useCallback(
     async (file) => {
       if (!file) throw new Error('No file provided.');
       setError(null);
+      setUploadNotice(null);
 
       // Skip duplicates by name.
       if (findStagedByName(stagedRef.current, file.name, 'file')) {
@@ -170,16 +177,39 @@ export function DataProvider({ children }) {
         const parsed = await parseFile(file, (pct) =>
           updateStagedItem(id, { progress: pct }),
         );
+        const kind = parsed.kind || 'workbook';
+        const dup = stagedRef.current.find(
+          (x) =>
+            x.id !== id &&
+            x.status === 'ready' &&
+            parsed.contentHash &&
+            x.contentHash === parsed.contentHash &&
+            (x.kind || 'workbook') === kind,
+        );
+        if (dup) {
+          updateStagedItem(id, {
+            status: 'duplicate',
+            progress: 100,
+            kind,
+            contentHash: parsed.contentHash,
+            duplicateOfName: dup.name,
+          });
+          setUploadNotice(
+            `Duplicate file detected: "${file.name}" is byte-identical to "${dup.name}". It was not added to the analysis batch — only the first copy is used when you run analysis.`,
+          );
+          return id;
+        }
         updateStagedItem(id, {
           status: 'ready',
           progress: 100,
-          kind: parsed.kind || 'workbook',
+          kind,
           parsed: parsed.parsed,
           analysisSheets: parsed.analysisSheets,
           metadata: parsed.metadata,
           rawTotals: parsed.rawTotals || {},
           semrushSnapshot: parsed.semrushSnapshot || null,
           size: parsed.size || file.size || 0,
+          contentHash: parsed.contentHash,
         });
         return id;
       } catch (err) {
@@ -198,6 +228,7 @@ export function DataProvider({ children }) {
     async (entry) => {
       if (!entry || !entry.url) throw new Error('No file selected.');
       setError(null);
+      setUploadNotice(null);
 
       if (findStagedByName(stagedRef.current, entry.name, 'upload_data')) {
         throw new Error(`"${entry.name}" is already in the batch.`);
@@ -221,16 +252,39 @@ export function DataProvider({ children }) {
         const parsed = await parseFromUploadData(entry, (pct) =>
           updateStagedItem(id, { progress: pct }),
         );
+        const kind = parsed.kind || 'workbook';
+        const dup = stagedRef.current.find(
+          (x) =>
+            x.id !== id &&
+            x.status === 'ready' &&
+            parsed.contentHash &&
+            x.contentHash === parsed.contentHash &&
+            (x.kind || 'workbook') === kind,
+        );
+        if (dup) {
+          updateStagedItem(id, {
+            status: 'duplicate',
+            progress: 100,
+            kind,
+            contentHash: parsed.contentHash,
+            duplicateOfName: dup.name,
+          });
+          setUploadNotice(
+            `Duplicate file detected: "${entry.name}" is byte-identical to "${dup.name}". It was not added to the analysis batch — only the first copy is used when you run analysis.`,
+          );
+          return id;
+        }
         updateStagedItem(id, {
           status: 'ready',
           progress: 100,
-          kind: parsed.kind || 'workbook',
+          kind,
           parsed: parsed.parsed,
           analysisSheets: parsed.analysisSheets,
           metadata: parsed.metadata,
           rawTotals: parsed.rawTotals || {},
           semrushSnapshot: parsed.semrushSnapshot || null,
           size: parsed.size || entry.size || 0,
+          contentHash: parsed.contentHash,
         });
         return id;
       } catch (err) {
@@ -251,10 +305,12 @@ export function DataProvider({ children }) {
 
   const clearStage = useCallback(() => {
     setStaged([]);
+    setUploadNotice(null);
   }, []);
 
   const runBatch = useCallback(async () => {
     setError(null);
+    setUploadNotice(null);
     const items = stagedRef.current.filter((it) => it.status === 'ready');
     if (items.length === 0) {
       throw new Error('No parsed files staged. Add a file first.');
@@ -308,6 +364,7 @@ export function DataProvider({ children }) {
     setSiteCrawlStatus('idle');
     setSiteCrawlError(null);
     setError(null);
+    setUploadNotice(null);
   }, []);
 
   // Derived helpers
@@ -372,6 +429,8 @@ export function DataProvider({ children }) {
       siteCrawlStatus,
       siteCrawlError,
       error,
+      uploadNotice,
+      dismissUploadNotice,
       // staging
       staged,
       stagedTotalBytes,
@@ -401,6 +460,8 @@ export function DataProvider({ children }) {
       siteCrawlStatus,
       siteCrawlError,
       error,
+      uploadNotice,
+      dismissUploadNotice,
       staged,
       stagedTotalBytes,
       stagedReadyCount,

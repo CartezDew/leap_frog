@@ -96,6 +96,41 @@ function snippet(text, max = 280) {
   return `${t.slice(0, max - 1)}…`;
 }
 
+/** Custom Recharts pie label that draws the slice's percentage centered in
+ *  the slice. Slices smaller than 5% are skipped to avoid label collisions
+ *  on a 6-bucket donut. */
+function renderDonutPctLabel({
+  cx,
+  cy,
+  midAngle,
+  innerRadius,
+  outerRadius,
+  percent,
+}) {
+  if (!percent || percent < 0.05) return null;
+  const RADIAN = Math.PI / 180;
+  const radius = innerRadius + (outerRadius - innerRadius) * 0.55;
+  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+  return (
+    <text
+      x={x}
+      y={y}
+      fill="#ffffff"
+      textAnchor="middle"
+      dominantBaseline="central"
+      style={{
+        fontSize: 13,
+        fontWeight: 700,
+        pointerEvents: 'none',
+        textShadow: '0 1px 2px rgba(0,0,0,0.25)',
+      }}
+    >
+      {`${Math.round(percent * 100)}%`}
+    </text>
+  );
+}
+
 const messageColumns = [
   {
     key: 'conversion_date',
@@ -122,6 +157,7 @@ const messageColumns = [
       );
     },
     sortValue: (row) => row.lead_type || '',
+    exportValue: (row) => row.lead_type || '',
   },
   {
     key: 'how_can_we_help',
@@ -318,6 +354,9 @@ export function ContactFormIntel() {
                 innerRadius={60}
                 outerRadius={110}
                 paddingAngle={2}
+                label={renderDonutPctLabel}
+                labelLine={false}
+                isAnimationActive={false}
               >
                 {breakdown.map((row) => (
                   <Cell key={row.type} fill={TYPE_COLORS[row.type] || '#522e91'} />
@@ -583,6 +622,7 @@ export function ContactFormIntel() {
         rows={sortedContacts}
         hint={`${formatInteger(sortedContacts.length)} entries`}
         defaultSort={{ key: 'conversion_date', dir: 'desc' }}
+        exportFileStem="contact-form-messages"
       />
     </>
   );

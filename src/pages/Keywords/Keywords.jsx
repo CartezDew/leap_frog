@@ -7,25 +7,19 @@
 //
 //   - Empty state when no Semrush PDFs have been uploaded yet
 //   - Story cards: at-a-glance "what is the SEO surface telling us"
-//   - SERP page mix donut + monthly average position trend
 //   - Theme heatmap (Talkwalker-style topic clustering, gated to 4+ months)
 //   - Top movers / decliners — momentum like a social listening platform
 //   - Estimated traffic value bar
 //   - Cross-link panel: which GA4 landing pages match each keyword theme
 //   - Underperformers panel: pages that rank but bleed visitors
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
-  Legend,
-  Line,
-  LineChart,
-  Pie,
-  PieChart,
   Tooltip,
   XAxis,
   YAxis,
@@ -43,17 +37,21 @@ import {
   LuSearch,
   LuSparkles,
   LuFileText,
-  LuCircleHelp,
+  LuChevronDown,
+  LuChevronUp,
 } from 'react-icons/lu';
 
 import { PageHeader } from '../../components/PageHeader/PageHeader.jsx';
 import { ChartWrapper } from '../../components/ChartWrapper/ChartWrapper.jsx';
+import { VizExportToolbar } from '../../components/VizExportToolbar/VizExportToolbar.jsx';
 import { StoryCards } from '../../components/StoryCards/StoryCards.jsx';
 import { DataTable } from '../../components/DataTable/DataTable.jsx';
 import { KpiCard } from '../../components/KpiCard/KpiCard.jsx';
 import { useData } from '../../context/DataContext.jsx';
-import { runKeywordAnalysis } from '../../lib/keywordAnalyzer.js';
+import { runKeywordAnalysis, rollupByIntent } from '../../lib/keywordAnalyzer.js';
 import { formatInteger, formatPercent } from '../../lib/formatters.js';
+import { compareValues } from '../../lib/sortValues.js';
+import { downloadSheetAsXlsx, downloadTableAsPdf } from '../../lib/tableExport.js';
 
 import './Keywords.css';
 
@@ -61,15 +59,6 @@ const SCOPE_OPTIONS = [
   { id: 'national', label: 'National' },
   { id: 'local', label: 'Local' },
 ];
-
-const SERP_BUCKET_COLORS = {
-  'Top 3': '#16a34a',
-  'Page 1': '#9aca3c',
-  'Page 2': '#d97706',
-  'Pages 3–5': '#dc2626',
-  'Pages 6+': '#7c2d12',
-  'Unranked': '#9ca3af',
-};
 
 function fmtPos(p) {
   if (p == null) return '—';
@@ -88,6 +77,21 @@ function deltaTone(delta) {
   if (delta > 0) return 'up';
   if (delta < 0) return 'down';
   return 'flat';
+}
+
+/** Default sort for the intent keyword drill-down table by bucket type. */
+function defaultIntentTableSort(intentKey) {
+  switch (intentKey) {
+    case 'commercial-investigation':
+    case 'service-intent':
+      return { key: 'volume', dir: 'desc' };
+    case 'planning':
+      return { key: 'est_value', dir: 'desc' };
+    case 'definitional':
+    case 'informational':
+    default:
+      return { key: 'position', dir: 'asc' };
+  }
 }
 
 function PositionPill({ position }) {
@@ -118,24 +122,52 @@ function ThemeChip({ theme }) {
   );
 }
 
-function HeatCell({ avgPosition }) {
-  if (avgPosition == null) {
+function rankHeatClass(position) {
+  if (position == null) return 'kw-heat__cell--empty';
+  if (position <= 3) return 'kw-heat__cell--top3';
+  if (position <= 10) return 'kw-heat__cell--page1';
+  if (position <= 20) return 'kw-heat__cell--page2';
+  if (position <= 50) return 'kw-heat__cell--page3';
+  return 'kw-heat__cell--deep';
+}
+
+/** e.g. "MAR 2026" → "MAR 26'" for compact heatmap column headers */
+function abbreviateKeywordMonthLabel(label) {
+  if (!label || typeof label !== 'string') return label;
+  return label.replace(/\b(19|20)(\d{2})\b/g, (_, __, yy) => `${yy}'`);
+}
+
+function HeatCell({ position, monthLabel }) {
+  if (position == null) {
     return <td className="kw-heat__cell kw-heat__cell--empty">—</td>;
   }
-  let bg = 'rgba(22, 163, 74, 0.85)'; // green
-  if (avgPosition > 50) bg = 'rgba(124, 45, 18, 0.85)';
-  else if (avgPosition > 20) bg = 'rgba(220, 38, 38, 0.8)';
-  else if (avgPosition > 10) bg = 'rgba(217, 119, 6, 0.8)';
-  else if (avgPosition > 3) bg = 'rgba(154, 202, 60, 0.85)';
   return (
     <td
-      className="kw-heat__cell"
-      style={{ background: bg, color: 'white' }}
-      title={`Avg position ${avgPosition.toFixed(1)}`}
+      className={`kw-heat__cell ${rankHeatClass(position)}`}
+      title={`${monthLabel}: position #${position}`}
     >
-      {avgPosition.toFixed(0)}
+      {position}
     </td>
   );
+}
+
+function heatSortValue(row, sortKey) {
+  if (sortKey === 'keyword') return row.keyword;
+  if (sortKey === 'volume') return row.volume ?? null;
+  if (sortKey === 'cpc') return row.cpc ?? null;
+  if (sortKey === 'latest') return row.latest ?? null;
+  if (String(sortKey).startsWith('m:')) {
+    const mk = String(sortKey).slice(2);
+    const c = row.cells.find((x) => x.month === mk);
+    return c?.position ?? null;
+  }
+  return null;
+}
+
+function defaultHeatSortDir(sortKey) {
+  if (sortKey === 'keyword') return 'asc';
+  if (sortKey === 'volume' || sortKey === 'cpc') return 'desc';
+  return 'asc';
 }
 
 function isSemrushSourceFile(file) {
@@ -206,50 +238,82 @@ function KeywordsEmptyState() {
 export function Keywords() {
   const { analyzed, filenameLabel, sourceFiles } = useData();
   const [scope, setScope] = useState('national');
+  const [heatSort, setHeatSort] = useState({ key: 'latest', dir: 'asc' });
+  const [selectedIntentKey, setSelectedIntentKey] = useState(null);
+  const [intentPanelOpen, setIntentPanelOpen] = useState(false);
 
   const data = useMemo(() => runKeywordAnalysis(analyzed), [analyzed]);
 
   // Always recompute month matrix derived state (must run before any early
   // return per the rules of hooks).
-  const themeMatrix = useMemo(() => {
-    const themesList = Array.from(
-      new Map(
-        (data.timeline || [])
-          .filter((t) => t.scope === scope)
-          .map((t) => [t.theme.key, t.theme]),
-      ).values(),
-    );
+  const keywordMatrix = useMemo(() => {
     const months = (data.monthly || []).map((m) => ({
       key: m.month,
-      label: m.label,
+      label: abbreviateKeywordMonthLabel(m.label),
     }));
-    const matrix = themesList.map((theme) => {
-      const row = months.map((mo) => {
-        const positions = data.timeline
-          .filter(
-            (t) =>
-              t.scope === scope && t.theme.key === theme.key,
-          )
-          .map((t) => {
-            const snap = t.history.find((h) => h.month === mo.key);
-            return snap?.position ?? null;
-          })
-          .filter((p) => p != null);
-        const avg =
-          positions.length > 0
-            ? positions.reduce((a, p) => a + p, 0) / positions.length
-            : null;
-        return { month: mo.key, label: mo.label, avg };
-      });
-      return { theme, cells: row };
-    });
-    matrix.sort((a, b) => {
-      const pa = a.cells[a.cells.length - 1]?.avg ?? 999;
-      const pb = b.cells[b.cells.length - 1]?.avg ?? 999;
-      return pa - pb;
-    });
+    const matrix = (data.timeline || [])
+      .filter((t) => t.scope === scope)
+      .map((keyword) => ({
+        keyword: keyword.keyword,
+        theme: keyword.theme,
+        volume: keyword.latest?.volume ?? null,
+        cpc: keyword.latest?.cpc ?? null,
+        latest: keyword.latest?.position ?? null,
+        cells: months.map((mo) => {
+          const snap = keyword.history.find((h) => h.month === mo.key);
+          return {
+            month: mo.key,
+            label: mo.label,
+            position: snap?.position ?? null,
+          };
+        }),
+      }));
     return { months, matrix };
   }, [data.timeline, data.monthly, scope]);
+
+  const sortedHeatRows = useMemo(() => {
+    const { matrix } = keywordMatrix;
+    if (!matrix?.length) return [];
+    const orderIdx = new Map(matrix.map((r, i) => [r.keyword, i]));
+    const copy = [...matrix];
+    copy.sort((a, b) => {
+      const va = heatSortValue(a, heatSort.key);
+      const vb = heatSortValue(b, heatSort.key);
+      let cmp = compareValues(va, vb, heatSort.dir);
+      if (cmp !== 0) return cmp;
+      return (orderIdx.get(a.keyword) ?? 0) - (orderIdx.get(b.keyword) ?? 0);
+    });
+    return copy;
+  }, [keywordMatrix, heatSort]);
+
+  const intents = useMemo(
+    () => rollupByIntent(data.timeline || [], scope),
+    [data.timeline, scope],
+  );
+
+  useEffect(() => {
+    setSelectedIntentKey(null);
+    setIntentPanelOpen(false);
+  }, [scope]);
+
+  const intentKeywordRows = useMemo(() => {
+    if (!selectedIntentKey) return [];
+    return (data.timeline || [])
+      .filter(
+        (t) => t.scope === scope && t.intent && t.intent.key === selectedIntentKey,
+      )
+      .map((t) => ({
+        id: `${t.keyword}|${t.scope}`,
+        keyword: t.keyword,
+        theme: t.theme,
+        position: t.latest?.position ?? null,
+        prev_position: t.prev_position ?? null,
+        volume: t.latest?.volume ?? null,
+        cpc: t.latest?.cpc ?? null,
+        est_value: t.est_value ?? 0,
+        mom_delta: t.mom_delta,
+      }));
+  }, [data.timeline, scope, selectedIntentKey]);
 
   // Empty state — no Semrush PDFs uploaded.
   if (data.empty) {
@@ -261,8 +325,6 @@ export function Keywords() {
   const trend = data.trend[scope] || [];
   const themes = data.themes[scope] || []; // eslint-disable-line no-unused-vars
   const insights = data.insights;
-  const serpMix = data.serp_mix;
-  const intents = data.intents;
   const cross = data.cross;
   const sourceReminder = buildSourceReminder(
     sourceFiles,
@@ -375,6 +437,7 @@ export function Keywords() {
         </div>
       ),
       sortValue: (row) => row.keyword,
+      exportValue: (row) => `${row.keyword} (${row.theme?.label || ''})`,
     },
     {
       key: 'mom_delta',
@@ -386,6 +449,7 @@ export function Keywords() {
         </span>
       ),
       sortValue: (row) => -(row.mom_delta || 0),
+      exportValue: (row) => row.mom_delta ?? '',
     },
     {
       key: 'latest_position',
@@ -393,6 +457,7 @@ export function Keywords() {
       align: 'right',
       render: (row) => <PositionPill position={row.latest.position} />,
       sortValue: (row) => row.latest.position ?? 999,
+      exportValue: (row) => row.latest?.position ?? '',
     },
     {
       key: 'prev_position',
@@ -400,6 +465,7 @@ export function Keywords() {
       align: 'right',
       render: (row) => <PositionPill position={row.prev_position} />,
       sortValue: (row) => row.prev_position ?? 999,
+      exportValue: (row) => row.prev_position ?? '',
     },
     {
       key: 'volume',
@@ -407,6 +473,7 @@ export function Keywords() {
       align: 'right',
       render: (row) => formatInteger(row.latest.volume) || '—',
       sortValue: (row) => row.latest.volume ?? 0,
+      exportValue: (row) => row.latest?.volume ?? '',
     },
     {
       key: 'est_value',
@@ -415,6 +482,79 @@ export function Keywords() {
       render: (row) =>
         row.est_value > 0 ? `$${formatInteger(row.est_value)}` : '—',
       sortValue: (row) => row.est_value || 0,
+      exportValue: (row) => row.est_value || 0,
+    },
+  ];
+
+  const intentKeywordColumns = [
+    {
+      key: 'keyword',
+      header: 'Keyword',
+      className: 'col-strong',
+      render: (row) => (
+        <div className="kw-cell-keyword">
+          <span className="kw-cell-keyword__text">{row.keyword}</span>
+          <span className="kw-cell-keyword__theme">
+            <ThemeChip theme={row.theme} />
+          </span>
+        </div>
+      ),
+      sortValue: (row) => row.keyword,
+      exportValue: (row) => `${row.keyword} (${row.theme?.label || ''})`,
+    },
+    {
+      key: 'mom_delta',
+      header: 'MoM',
+      align: 'right',
+      render: (row) => (
+        <span className={`kw-delta kw-delta--${deltaTone(row.mom_delta)}`}>
+          {fmtDelta(row.mom_delta)}
+        </span>
+      ),
+      sortValue: (row) => -(row.mom_delta || 0),
+      exportValue: (row) => row.mom_delta ?? '',
+    },
+    {
+      key: 'position',
+      header: 'Rank',
+      align: 'right',
+      render: (row) => <PositionPill position={row.position} />,
+      sortValue: (row) => row.position ?? 999,
+      exportValue: (row) => row.position ?? '',
+    },
+    {
+      key: 'prev_position',
+      header: 'Prev',
+      align: 'right',
+      render: (row) => <PositionPill position={row.prev_position} />,
+      sortValue: (row) => row.prev_position ?? 999,
+      exportValue: (row) => row.prev_position ?? '',
+    },
+    {
+      key: 'volume',
+      header: 'Volume',
+      align: 'right',
+      render: (row) => formatInteger(row.volume) || '—',
+      sortValue: (row) => row.volume ?? 0,
+      exportValue: (row) => row.volume ?? '',
+    },
+    {
+      key: 'cpc',
+      header: 'CPC',
+      align: 'right',
+      render: (row) =>
+        row.cpc != null ? `$${Number(row.cpc).toFixed(2)}` : '—',
+      sortValue: (row) => row.cpc ?? 0,
+      exportValue: (row) => (row.cpc != null ? Number(row.cpc).toFixed(2) : ''),
+    },
+    {
+      key: 'est_value',
+      header: 'Est. value',
+      align: 'right',
+      render: (row) =>
+        row.est_value > 0 ? `$${formatInteger(row.est_value)}` : '—',
+      sortValue: (row) => row.est_value || 0,
+      exportValue: (row) => row.est_value || 0,
     },
   ];
 
@@ -442,6 +582,7 @@ export function Keywords() {
         </div>
       ),
       sortValue: (row) => row.keyword,
+      exportValue: (row) => `${row.keyword} (${row.theme})`,
     },
     {
       key: 'latest_position',
@@ -449,6 +590,7 @@ export function Keywords() {
       align: 'right',
       render: (row) => <PositionPill position={row.latest_position} />,
       sortValue: (row) => row.latest_position ?? 999,
+      exportValue: (row) => row.latest_position ?? '',
     },
     {
       key: 'top_page',
@@ -462,6 +604,7 @@ export function Keywords() {
           </code>
         );
       },
+      exportValue: (row) => row.pages[0]?.path ?? '',
     },
     {
       key: 'sessions',
@@ -469,6 +612,7 @@ export function Keywords() {
       align: 'right',
       render: (row) => formatInteger(row.pages[0]?.sessions || 0),
       sortValue: (row) => row.pages[0]?.sessions ?? 0,
+      exportValue: (row) => row.pages[0]?.sessions ?? 0,
     },
     {
       key: 'bounce',
@@ -484,8 +628,67 @@ export function Keywords() {
         );
       },
       sortValue: (row) => row.pages[0]?.bounce_rate ?? 0,
+      exportValue: (row) =>
+        row.pages[0]?.bounce_rate != null ? formatPercent(row.pages[0].bounce_rate, 1) : '',
     },
   ];
+
+  function handleHeatSort(key) {
+    setHeatSort((prev) => {
+      if (!prev || prev.key !== key) {
+        return { key, dir: defaultHeatSortDir(key) };
+      }
+      return { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' };
+    });
+  }
+
+  function heatHeaderAriaSort(key) {
+    if (heatSort.key !== key) return 'none';
+    return heatSort.dir === 'asc' ? 'ascending' : 'descending';
+  }
+
+  function exportHeatmapRows() {
+    const months = keywordMatrix.months;
+    const headers = [
+      'Keyword',
+      'Theme',
+      'Volume',
+      'CPC',
+      ...months.map((m) => m.label),
+      'Latest #',
+    ];
+    const body = sortedHeatRows.map((row) => [
+      row.keyword,
+      row.theme.label,
+      row.volume ?? '',
+      row.cpc != null ? Number(row.cpc).toFixed(2) : '',
+      ...row.cells.map((c) => (c.position != null ? c.position : '')),
+      row.latest ?? '',
+    ]);
+    return { headers, body };
+  }
+
+  function exportHeatmapXlsx() {
+    if (sortedHeatRows.length <= 5) return;
+    const { headers, body } = exportHeatmapRows();
+    downloadSheetAsXlsx(`keywords-heatmap-${scope}`, 'Heatmap', headers, body);
+  }
+
+  function exportHeatmapPdf() {
+    if (sortedHeatRows.length <= 5) return;
+    const { headers, body } = exportHeatmapRows();
+    downloadTableAsPdf(`keywords-heatmap-${scope}`, headers, body);
+  }
+
+  function exportValueDriversRows() {
+    const headers = ['Keyword', 'Theme', 'Est. monthly value'];
+    const body = (insights.value_drivers || []).map((kw) => [
+      kw.keyword,
+      kw.theme?.label || '',
+      kw.est_value ?? 0,
+    ]);
+    return { headers, body };
+  }
 
   // ---- Render ----
   return (
@@ -541,155 +744,191 @@ export function Keywords() {
         ariaLabel="Keyword intelligence story cards"
       />
 
-      {/* ---- SERP mix donut + monthly trend ------------------------------- */}
-      <div className="card-grid card-grid--cols-2 kw-grid-stretch">
-        <div className="kw-cell">
-          <h2 className="section-header">SERP <em>page mix</em></h2>
-          <p className="section-subhead">
-            Where each tracked keyword sits this month. Page 1 = clicks; Page 2+ = invisible
-            in practice. Aim to push Page-2 keywords into the green ring.
-          </p>
-          <ChartWrapper height={300}>
-            <PieChart>
-              <Pie
-                data={serpMix}
-                dataKey="count"
-                nameKey="bucket"
-                cx="50%"
-                cy="50%"
-                innerRadius={60}
-                outerRadius={110}
-                paddingAngle={2}
-              >
-                {serpMix.map((entry) => (
-                  <Cell
-                    key={entry.bucket}
-                    fill={SERP_BUCKET_COLORS[entry.bucket] || '#9ca3af'}
-                  />
-                ))}
-              </Pie>
-              <Tooltip
-                formatter={(value, name, ctx) => [
-                  `${value} keywords (${formatPercent(ctx.payload.share, 0)})`,
-                  name,
-                ]}
-              />
-              <Legend
-                verticalAlign="bottom"
-                iconType="circle"
-                wrapperStyle={{ paddingTop: 12, fontSize: 12 }}
-                formatter={(value, entry) => {
-                  const pct = entry?.payload?.share ?? 0;
-                  return `${value} · ${formatPercent(pct, 0)}`;
-                }}
-              />
-            </PieChart>
-          </ChartWrapper>
-        </div>
-
-        <div className="kw-cell">
-          <h2 className="section-header">Average position <em>over time</em></h2>
-          <p className="section-subhead">
-            Lower = better. A flat or rising line means SEO investment is converting
-            into rank lift; a downward line means competitors are moving faster.
-          </p>
-          <ChartWrapper height={300}>
-            <LineChart data={trend} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-              <CartesianGrid stroke="#e5e7eb" strokeDasharray="3 3" />
-              <XAxis dataKey="label" stroke="#6b7280" />
-              <YAxis
-                yAxisId="pos"
-                stroke="#522e91"
-                reversed
-                domain={[1, 'auto']}
-                allowDecimals
-                tickFormatter={(v) => `#${Math.round(v)}`}
-              />
-              <YAxis
-                yAxisId="page1"
-                orientation="right"
-                stroke="#16a34a"
-                allowDecimals={false}
-                tickFormatter={(v) => formatInteger(v)}
-              />
-              <Tooltip
-                formatter={(value, name) =>
-                  name === 'Avg position'
-                    ? [`#${(value || 0).toFixed(1)}`, name]
-                    : [formatInteger(value), name]
-                }
-              />
-              <Legend wrapperStyle={{ paddingTop: 8, fontSize: 12 }} />
-              <Line
-                yAxisId="pos"
-                type="monotone"
-                dataKey="avg_position"
-                name="Avg position"
-                stroke="#522e91"
-                strokeWidth={3}
-                dot={{ r: 5, fill: '#522e91' }}
-                activeDot={{ r: 7 }}
-              />
-              <Line
-                yAxisId="page1"
-                type="monotone"
-                dataKey="top10"
-                name="Page-1 keywords"
-                stroke="#16a34a"
-                strokeWidth={2}
-                dot={{ r: 4 }}
-              />
-            </LineChart>
-          </ChartWrapper>
-        </div>
-      </div>
-
-      {/* ---- Theme heatmap (only meaningful with 4+ snapshots) ------------ */}
-      {themeMatrix.months.length > 3 && (
+      {/* ---- Keyword monthly heatmap --------------------------------------- */}
+      {keywordMatrix.months.length > 0 && (
         <>
           <h2 className="section-header">
-            Theme <em>heatmap</em>
+            Monthly keyword <em>heatmap</em>
             <span className="section-header__hint">
-              <LuSparkles size={14} aria-hidden="true" /> Talkwalker-style topic clustering
+              <LuSparkles size={14} aria-hidden="true" /> rank strength by month
             </span>
           </h2>
           <p className="section-subhead">
-            Each row is a topic cluster (computed from keyword text); each cell is the
-            average rank for that cluster in that month. Greener = closer to #1.
-            Showing {themeMatrix.months.length} months of Semrush snapshots.
+            Each row is a tracked keyword and each month column shows its Semrush position.
+            Green means strong page-1 visibility; yellow/orange means opportunity; red means
+            deeper rankings that need content or authority work.
           </p>
-          <div className="card kw-heat-card">
+          <div className="kw-heat-legend" aria-label="Keyword heatmap legend">
+            <span><i className="kw-heat-legend__swatch kw-heat__cell--top3" /> Top 3</span>
+            <span><i className="kw-heat-legend__swatch kw-heat__cell--page1" /> Page 1</span>
+            <span><i className="kw-heat-legend__swatch kw-heat__cell--page2" /> Page 2</span>
+            <span><i className="kw-heat-legend__swatch kw-heat__cell--page3" /> Pages 3-5</span>
+            <span><i className="kw-heat-legend__swatch kw-heat__cell--deep" /> Deep rank</span>
+            <span><i className="kw-heat-legend__swatch kw-heat__cell--empty" /> Unranked</span>
+          </div>
+          <div className="table-wrap kw-heat-card">
             <div className="table-scroll">
               <table className="kw-heat">
                 <thead>
                   <tr>
-                    <th scope="col" className="kw-heat__theme-col">Theme</th>
-                    {themeMatrix.months.map((m) => (
-                      <th key={m.key} scope="col">{m.label}</th>
-                    ))}
-                    <th scope="col">Latest #</th>
+                    <th
+                      scope="col"
+                      className="kw-heat__keyword-col is-sortable"
+                      aria-sort={heatHeaderAriaSort('keyword')}
+                    >
+                      <button
+                        type="button"
+                        className="kw-heat__th-btn"
+                        onClick={() => handleHeatSort('keyword')}
+                        title="Sort by keyword"
+                        aria-label="Sort by keyword"
+                      >
+                        <span className="kw-heat__th-label">Keyword</span>
+                        <span
+                          className={`table__sort table__sort--${
+                            heatSort.key === 'keyword' ? heatSort.dir : 'none'
+                          }`}
+                          aria-hidden="true"
+                        >
+                          <span className="table__sort-up">▲</span>
+                          <span className="table__sort-down">▼</span>
+                        </span>
+                      </button>
+                    </th>
+                    <th
+                      scope="col"
+                      className="kw-heat__metric-col is-sortable"
+                      aria-sort={heatHeaderAriaSort('volume')}
+                    >
+                      <button
+                        type="button"
+                        className="kw-heat__th-btn kw-heat__th-btn--num"
+                        onClick={() => handleHeatSort('volume')}
+                        title="Sort by volume"
+                        aria-label="Sort by volume"
+                      >
+                        <span className="kw-heat__th-label">Vol.</span>
+                        <span
+                          className={`table__sort table__sort--${
+                            heatSort.key === 'volume' ? heatSort.dir : 'none'
+                          }`}
+                          aria-hidden="true"
+                        >
+                          <span className="table__sort-up">▲</span>
+                          <span className="table__sort-down">▼</span>
+                        </span>
+                      </button>
+                    </th>
+                    <th
+                      scope="col"
+                      className="kw-heat__metric-col is-sortable"
+                      aria-sort={heatHeaderAriaSort('cpc')}
+                    >
+                      <button
+                        type="button"
+                        className="kw-heat__th-btn kw-heat__th-btn--num"
+                        onClick={() => handleHeatSort('cpc')}
+                        title="Sort by CPC"
+                        aria-label="Sort by CPC"
+                      >
+                        <span className="kw-heat__th-label">CPC</span>
+                        <span
+                          className={`table__sort table__sort--${
+                            heatSort.key === 'cpc' ? heatSort.dir : 'none'
+                          }`}
+                          aria-hidden="true"
+                        >
+                          <span className="table__sort-up">▲</span>
+                          <span className="table__sort-down">▼</span>
+                        </span>
+                      </button>
+                    </th>
+                    {keywordMatrix.months.map((m) => {
+                      const sk = `m:${m.key}`;
+                      return (
+                        <th
+                          key={m.key}
+                          scope="col"
+                          className="is-sortable"
+                          aria-sort={heatHeaderAriaSort(sk)}
+                        >
+                          <button
+                            type="button"
+                            className="kw-heat__th-btn kw-heat__th-btn--month"
+                            onClick={() => handleHeatSort(sk)}
+                            title={`Sort by ${m.label}`}
+                            aria-label={`Sort by ${m.label}`}
+                          >
+                            <span className="kw-heat__th-label">{m.label}</span>
+                            <span
+                              className={`table__sort table__sort--${
+                                heatSort.key === sk ? heatSort.dir : 'none'
+                              }`}
+                              aria-hidden="true"
+                            >
+                              <span className="table__sort-up">▲</span>
+                              <span className="table__sort-down">▼</span>
+                            </span>
+                          </button>
+                        </th>
+                      );
+                    })}
+                    <th
+                      scope="col"
+                      className="is-sortable"
+                      aria-sort={heatHeaderAriaSort('latest')}
+                    >
+                      <button
+                        type="button"
+                        className="kw-heat__th-btn kw-heat__th-btn--num"
+                        onClick={() => handleHeatSort('latest')}
+                        title="Sort by latest rank"
+                        aria-label="Sort by latest rank"
+                      >
+                        <span className="kw-heat__th-label">Latest #</span>
+                        <span
+                          className={`table__sort table__sort--${
+                            heatSort.key === 'latest' ? heatSort.dir : 'none'
+                          }`}
+                          aria-hidden="true"
+                        >
+                          <span className="table__sort-up">▲</span>
+                          <span className="table__sort-down">▼</span>
+                        </span>
+                      </button>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {themeMatrix.matrix.map((row) => {
-                    const latest = row.cells[row.cells.length - 1]?.avg ?? null;
+                  {sortedHeatRows.slice(0, 40).map((row) => {
                     return (
-                      <tr key={row.theme.key}>
-                        <th scope="row" className="kw-heat__theme-col">
+                      <tr key={row.keyword}>
+                        <th scope="row" className="kw-heat__keyword-col">
                           <span className="kw-heat__theme-cell">
                             <span
                               className="kw-heat__swatch"
                               style={{ background: row.theme.color }}
                               aria-hidden="true"
                             />
-                            {row.theme.label}
+                            <span>
+                              <span className="kw-heat__keyword">{row.keyword}</span>
+                              <span className="kw-heat__theme-label">{row.theme.label}</span>
+                            </span>
                           </span>
                         </th>
+                        <td className="kw-heat__metric">{formatInteger(row.volume || 0)}</td>
+                        <td className="kw-heat__metric">
+                          {row.cpc != null ? `$${Number(row.cpc).toFixed(2)}` : '—'}
+                        </td>
                         {row.cells.map((cell) => (
-                          <HeatCell key={cell.month} avgPosition={cell.avg} />
+                          <HeatCell
+                            key={cell.month}
+                            position={cell.position}
+                            monthLabel={cell.label}
+                          />
                         ))}
                         <td className="kw-heat__latest">
-                          {latest != null ? `#${latest.toFixed(0)}` : '—'}
+                          {row.latest != null ? `#${row.latest}` : '—'}
                         </td>
                       </tr>
                     );
@@ -697,6 +936,25 @@ export function Keywords() {
                 </tbody>
               </table>
             </div>
+            {sortedHeatRows.length > 40 && (
+              <p className="kw-heat__note">
+                Showing 40 of {sortedHeatRows.length} keywords (current sort). Use column headers to
+                re-order.
+                {sortedHeatRows.length > 5
+                  ? ' Export (below) includes the full sorted list.'
+                  : ''}
+              </p>
+            )}
+            {sortedHeatRows.length > 5 && (
+              <div className="table-export-dock">
+                <span className="table-export-dock__label">Download table</span>
+                <VizExportToolbar
+                  className="viz-export-toolbar--dock"
+                  onXlsx={exportHeatmapXlsx}
+                  onPdf={exportHeatmapPdf}
+                />
+              </div>
+            )}
           </div>
         </>
       )}
@@ -709,23 +967,37 @@ export function Keywords() {
         </span>
       </h2>
       <p className="section-subhead">
-        Each tracked Semrush keyword is grouped by what the searcher appears to want.
-        The large number is a keyword count — not people, leads, or ad buyers.
+        Each tracked Semrush keyword is grouped by what the query looks like it is trying to accomplish.
+        The number is how many <strong>keywords</strong> (search phrases) sit in that bucket for the{' '}
+        <strong>{scope === 'local' ? 'local' : 'national'}</strong> scope — not people, leads, or ad buyers.
+        Select a card to target that bucket, then use <strong>Expand keyword table</strong> below to show
+        the sortable list (downloads appear in the table footer when enough rows).
       </p>
-      <div className="kw-intent-grid">
+      <div className="kw-intent-grid" role="radiogroup" aria-label="Searcher intent buckets">
         {intents.map((intent) => (
-          <article key={intent.key} className={`kw-intent kw-intent--${intent.tone}`}>
+          <article
+            key={intent.key}
+            role="button"
+            tabIndex={0}
+            aria-pressed={selectedIntentKey === intent.key}
+            className={`kw-intent kw-intent--${intent.tone}${
+              selectedIntentKey === intent.key ? ' kw-intent--selected' : ''
+            }`}
+            onClick={() => {
+              setSelectedIntentKey(intent.key);
+              setIntentPanelOpen(false);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setSelectedIntentKey(intent.key);
+                setIntentPanelOpen(false);
+              }
+            }}
+          >
             <header className="kw-intent__head">
               <p className="kw-intent__label">{intent.label}</p>
               <div className="kw-intent__scope-rollup">
-                <button
-                  type="button"
-                  className="kw-intent__help"
-                  aria-label={`${intent.keywords} tracked keywords are classified as ${intent.label}. This is not a count of people, leads, or advertisers.`}
-                  data-tooltip={`${intent.keywords} tracked Semrush keyword${intent.keywords === 1 ? '' : 's'} in this intent bucket. Not people, leads, or advertisers.`}
-                >
-                  <LuCircleHelp size={13} aria-hidden="true" />
-                </button>
                 <span className="kw-intent__count">{intent.keywords}</span>
                 <span className="kw-intent__count-label">
                   keyword{intent.keywords === 1 ? '' : 's'}
@@ -759,6 +1031,68 @@ export function Keywords() {
         ))}
       </div>
 
+      <div className="kw-intent-table-panel">
+        {!selectedIntentKey ? (
+          <p className="kw-intent-table-panel__hint muted">
+            Select a bucket card above, then expand the keyword table to view and export that bucket's
+            keywords.
+          </p>
+        ) : (
+          <>
+            <div
+              className={`kw-intent-table-panel__bar${
+                intentPanelOpen
+                  ? ' kw-intent-table-panel__bar--open'
+                  : ' kw-intent-table-panel__bar--closed'
+              }`}
+            >
+              <div className="kw-intent-table-panel__summary">
+                <span className="kw-intent-table-panel__eyebrow">Bucket keywords</span>
+                <strong className="kw-intent-table-panel__title">
+                  {intents.find((i) => i.key === selectedIntentKey)?.label || selectedIntentKey}
+                </strong>
+                <span className="kw-intent-table-panel__count muted">
+                  {formatInteger(intentKeywordRows.length)} keyword
+                  {intentKeywordRows.length === 1 ? '' : 's'}
+                </span>
+              </div>
+              <button
+                type="button"
+                className="btn btn--secondary kw-intent-table-panel__toggle"
+                aria-expanded={intentPanelOpen}
+                onClick={() => setIntentPanelOpen((open) => !open)}
+              >
+                {intentPanelOpen ? (
+                  <>
+                    Collapse table <LuChevronUp size={16} aria-hidden="true" />
+                  </>
+                ) : (
+                  <>
+                    Expand keyword table <LuChevronDown size={16} aria-hidden="true" />
+                  </>
+                )}
+              </button>
+            </div>
+            {intentPanelOpen &&
+              (intentKeywordRows.length === 0 ? (
+                <p className="kw-intent-table-panel__empty kw-intent-table-panel__empty--attached muted">
+                  No keywords in this bucket.
+                </p>
+              ) : (
+                <div className="kw-intent-table-panel__table">
+                  <DataTable
+                    columns={intentKeywordColumns}
+                    rows={intentKeywordRows}
+                    defaultSort={defaultIntentTableSort(selectedIntentKey)}
+                    exportFileStem={`keywords-intent-${scope}-${selectedIntentKey}`}
+                    emptyMessage="No keywords in this bucket."
+                  />
+                </div>
+              ))}
+          </>
+        )}
+      </div>
+
       {/* ---- Movers / decliners side by side ------------------------------ */}
       <div className="kw-momentum-stack">
         <div>
@@ -779,6 +1113,7 @@ export function Keywords() {
               columns={moverColumns}
               rows={insights.movers.slice(0, 12)}
               defaultSort={{ key: 'mom_delta', dir: 'asc' }}
+              exportFileStem={`keywords-movers-${scope}`}
             />
           )}
         </div>
@@ -801,6 +1136,7 @@ export function Keywords() {
               columns={moverColumns}
               rows={insights.decliners.slice(0, 12)}
               defaultSort={{ key: 'mom_delta', dir: 'asc' }}
+              exportFileStem={`keywords-decliners-${scope}`}
             />
           )}
         </div>
@@ -912,6 +1248,7 @@ export function Keywords() {
           rows={cross.page_matches.slice(0, 25)}
           hint={`${cross.page_matches.length} keyword/page connections`}
           defaultSort={{ key: 'sessions', dir: 'desc' }}
+          exportFileStem={`keywords-landing-match-${scope}`}
         />
       )}
 

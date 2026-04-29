@@ -278,6 +278,7 @@ export function PagePathAnalysis() {
         rows={pages.top_pages || []}
         emptyMessage="Page path data not provided in this upload."
         defaultSort={{ key: 'sessions', dir: 'desc' }}
+        exportFileStem="page-path-top-pages"
       />
 
       <h2 className="section-header">Contact page monthly <em>performance</em></h2>
@@ -285,6 +286,7 @@ export function PagePathAnalysis() {
         columns={monthlyColumns}
         rows={pages.contact_monthly || []}
         emptyMessage="No /contact/* page data detected."
+        exportFileStem="page-path-contact-monthly"
       />
     </>
   );

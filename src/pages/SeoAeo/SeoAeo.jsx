@@ -6,6 +6,7 @@ import {
   LuExternalLink,
   LuFileSearch,
   LuGlobe,
+  LuLink2,
   LuMegaphone,
   LuRefreshCw,
   LuSearch,
@@ -114,6 +115,18 @@ function PriorityPill({ value }) {
   return <span className={`seo-pill ${cls}`}>{value}</span>;
 }
 
+/** Full-width detail panel reused by every "How to fix" disclosure on this page. */
+function FixDetail({ heading, text }) {
+  const t = text == null ? '' : String(text).trim();
+  if (!t) return null;
+  return (
+    <div className="seo-fix-detail">
+      <h4 className="seo-fix-detail__heading">{heading}</h4>
+      <p className="seo-fix-detail__text">{t}</p>
+    </div>
+  );
+}
+
 export function SeoAeo() {
   const {
     analyzed,
@@ -153,6 +166,7 @@ export function SeoAeo() {
       header: 'Action',
       render: (row) => <PriorityPill value={row.priority} />,
       sortValue: (row) => row.priority,
+      exportValue: (row) => row.priority ?? '',
     },
     { key: 'recommendation', header: 'Recommended answer strategy', sortable: false },
   ];
@@ -183,6 +197,7 @@ export function SeoAeo() {
       header: 'Examples',
       render: (row) => row.sampleKeywords.join(', '),
       sortable: false,
+      exportValue: (row) => (row.sampleKeywords || []).join(', '),
     },
     { key: 'recommendation', header: 'Recommended use', sortable: false },
   ];
@@ -308,6 +323,15 @@ export function SeoAeo() {
             rows={analysis.pageOpportunities.slice(0, 30)}
             defaultSort={{ key: 'priority', dir: 'desc' }}
             hint={`${analysis.pageOpportunities.length} keyword/page opportunities`}
+            exportFileStem="seo-aeo-page-opportunities"
+            expandable={{
+              triggerColumn: 'recommendation',
+              showLabel: 'How to fix',
+              hideLabel: 'Hide details',
+              render: (row) => (
+                <FixDetail heading="Why this fix matters" text={row.recommendation} />
+              ),
+            }}
           />
 
           <h2 className="section-header section-header--inset">
@@ -324,6 +348,18 @@ export function SeoAeo() {
             columns={questionColumns}
             rows={analysis.questionOpportunities.slice(0, 25)}
             defaultSort={{ key: 'fit', dir: 'asc' }}
+            exportFileStem="seo-aeo-answer-questions"
+            expandable={{
+              triggerColumn: 'recommendation',
+              showLabel: 'How to fix',
+              hideLabel: 'Hide details',
+              render: (row) => (
+                <FixDetail
+                  heading="Recommended answer strategy"
+                  text={row.recommendation}
+                />
+              ),
+            }}
           />
 
           <h2 className="section-header section-header--inset">
@@ -342,6 +378,15 @@ export function SeoAeo() {
             columns={campaignColumns}
             rows={analysis.campaignClusters.slice(0, 12)}
             defaultSort={{ key: 'paidValue', dir: 'desc' }}
+            exportFileStem="seo-aeo-campaign-clusters"
+            expandable={{
+              triggerColumn: 'recommendation',
+              showLabel: 'How to fix',
+              hideLabel: 'Hide details',
+              render: (row) => (
+                <FixDetail heading="Recommended use" text={row.recommendation} />
+              ),
+            }}
           />
 
           <h2 className="section-header section-header--inset">
@@ -354,24 +399,64 @@ export function SeoAeo() {
             columns={technicalColumns}
             rows={analysis.technical.slice(0, 30)}
             defaultSort={{ key: 'issueCount', dir: 'desc' }}
+            exportFileStem="seo-aeo-technical-cleanup"
+            expandable={{
+              triggerColumn: 'recommendation',
+              showLabel: 'How to fix',
+              hideLabel: 'Hide details',
+              render: (row) => (
+                <FixDetail
+                  heading="Client-ready fix explanation"
+                  text={row.recommendation}
+                />
+              ),
+            }}
           />
 
           {analysis.earnedMedia.length > 0 && (
-            <>
-              <h2 className="section-header section-header--inset">
-                Earned media <em>angles</em>
-              </h2>
-              <div className="seo-earned-grid">
-                {analysis.earnedMedia.slice(0, 6).map((item) => (
-                  <article key={item.topic} className="seo-earned-card">
-                    <span>{item.theme}</span>
-                    <h3>{item.topic}</h3>
-                    <p>{item.angle}</p>
-                    <small>{item.proof}</small>
-                  </article>
+            <section
+              className="seo-earned-feature"
+              aria-labelledby="seo-earned-feature-title"
+            >
+              <header className="seo-earned-feature__header">
+                <span className="seo-earned-feature__eyebrow">
+                  <LuMegaphone size={13} aria-hidden="true" />
+                  Key insight · PR &amp; outreach playbook
+                </span>
+                <h2
+                  id="seo-earned-feature-title"
+                  className="seo-earned-feature__title"
+                >
+                  Earned media <em>angles</em>
+                </h2>
+                <p className="seo-earned-feature__subhead">
+                  These are the strongest stories to pitch journalists, podcasters,
+                  and analysts this quarter. Each angle pairs a topic Leapfrog can
+                  credibly own with the page that should anchor the conversation.
+                </p>
+              </header>
+              <ol className="seo-earned-grid">
+                {analysis.earnedMedia.slice(0, 6).map((item, idx) => (
+                  <li
+                    key={item.topic}
+                    className={`seo-earned-card${
+                      idx === 0 ? ' seo-earned-card--featured' : ''
+                    }`}
+                  >
+                    <span className="seo-earned-card__index" aria-hidden="true">
+                      {String(idx + 1).padStart(2, '0')}
+                    </span>
+                    <span className="seo-earned-card__theme">{item.theme}</span>
+                    <h3 className="seo-earned-card__title">{item.topic}</h3>
+                    <p className="seo-earned-card__angle">{item.angle}</p>
+                    <div className="seo-earned-card__proof">
+                      <LuLink2 size={13} aria-hidden="true" />
+                      <span>{item.proof}</span>
+                    </div>
+                  </li>
                 ))}
-              </div>
-            </>
+              </ol>
+            </section>
           )}
 
           <div className="seo-footer-link">

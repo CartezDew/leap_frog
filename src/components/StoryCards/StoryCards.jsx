@@ -21,7 +21,19 @@ function scrollToHash(event, hash) {
   const el = document.getElementById(id);
   if (!el) return;
   event.preventDefault();
-  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const reduceMotion =
+    typeof window !== 'undefined' &&
+    window.matchMedia &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  el.scrollIntoView({
+    behavior: reduceMotion ? 'auto' : 'smooth',
+    block: 'start',
+  });
+  // Move focus so keyboard / screen-reader users land on the target section.
+  if (typeof el.focus === 'function') {
+    if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
+    el.focus({ preventScroll: true });
+  }
   if (typeof history !== 'undefined' && history.replaceState) {
     history.replaceState(null, '', `#${id}`);
   }

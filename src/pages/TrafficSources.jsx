@@ -116,12 +116,14 @@ const sourceColumns = [
     header: 'Bounce Tier',
     render: (row) => <BounceBadge value={row.bounce_rate} />,
     sortValue: (row) => row.bounce_rate,
+    exportValue: (row) => row.tier ?? '',
   },
   {
     key: 'bot',
     header: 'Bot Class',
     render: (row) => <BotBadge classification={row.bot_classification} />,
     sortValue: (row) => BOT_RANK[row.bot_classification] ?? -1,
+    exportValue: (row) => row.bot_classification ?? '',
   },
 ];
 
@@ -230,6 +232,44 @@ const cityColumns = [
     header: 'Classification',
     render: (row) => <BotBadge classification={row.bot_classification} />,
     sortValue: (row) => BOT_RANK[row.bot_classification] ?? -1,
+    exportValue: (row) => row.bot_classification ?? '',
+  },
+];
+
+const channelLeaderColumns = [
+  { key: 'source', header: 'Source', className: 'col-strong' },
+  { key: 'sessions', header: 'Sessions', align: 'right', format: (v) => formatInteger(v) },
+  { key: 'engagement_rate', header: 'Engagement', align: 'right', format: (v) => formatPercent(v, 1) },
+  {
+    key: 'avg_engagement_time',
+    header: 'Avg time',
+    align: 'right',
+    format: (v) => formatSeconds(v),
+  },
+  {
+    key: 'quality_index',
+    header: 'Quality',
+    align: 'right',
+    render: (row) => (
+      <progress
+        className="lever-quality-bar"
+        value={Math.round(row.quality_index * 100)}
+        max={100}
+        aria-label={`Quality index ${(row.quality_index * 100).toFixed(0)} of 100`}
+      />
+    ),
+    sortValue: (row) => row.quality_index,
+    exportValue: (row) =>
+      row.quality_index != null ? String(Math.round(row.quality_index * 100)) : '',
+  },
+  {
+    key: 'action',
+    header: 'Action',
+    render: (row) => (
+      <span className={`lever-pill lever-pill--${row.action.tone}`}>{row.action.label}</span>
+    ),
+    sortValue: (row) => row.action?.label || '',
+    exportValue: (row) => row.action?.label || '',
   },
 ];
 
@@ -305,44 +345,13 @@ export function TrafficSources() {
             excluding confirmed bots and AI assistants. Use the action column to decide
             where to spend marketing hours next week.
           </p>
-          <div className="card lever-table-card">
-            <div className="table-scroll">
-              <table className="datatable">
-                <thead>
-                  <tr>
-                    <th>Source</th>
-                    <th className="num">Sessions</th>
-                    <th className="num">Engagement</th>
-                    <th className="num">Avg time</th>
-                    <th className="num">Quality</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {channelLeaders.map((row, idx) => (
-                    <tr key={`${row.source}-${idx}`}>
-                      <td>{row.source || '(unknown)'}</td>
-                      <td className="num">{formatInteger(row.sessions)}</td>
-                      <td className="num">{formatPercent(row.engagement_rate, 1)}</td>
-                      <td className="num">{formatSeconds(row.avg_engagement_time)}</td>
-                      <td className="num">
-                        <progress
-                          className="lever-quality-bar"
-                          value={Math.round(row.quality_index * 100)}
-                          max={100}
-                          aria-label={`Quality index ${(row.quality_index * 100).toFixed(0)} of 100`}
-                        />
-                      </td>
-                      <td>
-                        <span className={`lever-pill lever-pill--${row.action.tone}`}>
-                          {row.action.label}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          <div className="lever-table-card">
+            <DataTable
+              columns={channelLeaderColumns}
+              rows={channelLeaders}
+              defaultSort={{ key: 'sessions', dir: 'desc' }}
+              exportFileStem="traffic-sources-channel-leaders"
+            />
           </div>
         </>
       )}
@@ -415,6 +424,7 @@ export function TrafficSources() {
         rows={sources.slice(0, 25)}
         hint={`${formatInteger(sources.length)} total sources`}
         defaultSort={{ key: 'sessions', dir: 'desc' }}
+        exportFileStem="traffic-sources-top-sources"
       />
 
       <div className="card-grid card-grid--cols-2 sources-charts">
@@ -481,6 +491,7 @@ export function TrafficSources() {
         rows={cities.slice(0, 20)}
         hint={`Top 20 by sessions of ${cities.length} cities`}
         defaultSort={{ key: 'sessions', dir: 'desc' }}
+        exportFileStem="traffic-sources-top-cities"
       />
     </>
   );

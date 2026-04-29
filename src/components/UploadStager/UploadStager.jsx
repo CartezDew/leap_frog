@@ -8,6 +8,7 @@ import {
   LuPause,
   LuTriangleAlert,
   LuCircleCheck,
+  LuCopy,
 } from 'react-icons/lu';
 
 import { useData } from '../../context/DataContext.jsx';
@@ -30,6 +31,8 @@ function StagedRow({ item, onRemove, busy }) {
       <span className="stager__row-icon">
         {item.status === 'error' ? (
           <LuTriangleAlert size={18} />
+        ) : item.status === 'duplicate' ? (
+          <LuCopy size={18} />
         ) : item.status === 'ready' ? (
           <LuCircleCheck size={18} />
         ) : item.kind === 'semrush_pdf' ? (
@@ -50,6 +53,12 @@ function StagedRow({ item, onRemove, busy }) {
           )}
           {item.status === 'parsing' && <> · Parsing… {item.progress || 0}%</>}
           {item.status === 'ready' && <> · Ready</>}
+          {item.status === 'duplicate' && (
+            <>
+              {' '}
+              · <span className="stager__row-duplicate">Duplicate of “{item.duplicateOfName}” — excluded from analysis</span>
+            </>
+          )}
           {item.status === 'error' && (
             <span className="stager__row-error"> · {item.error}</span>
           )}
@@ -138,6 +147,8 @@ export function UploadStager() {
     analyzeStatus,
     hasData,
     error,
+    uploadNotice,
+    dismissUploadNotice,
   } = useData();
 
   const fileInputRef = useRef(null);
@@ -278,6 +289,19 @@ export function UploadStager() {
           {usedPct}% of 50 MB
         </span>
       </div>
+
+      {uploadNotice && (
+        <div className="stager__notice" role="status">
+          <p className="stager__notice-text">{uploadNotice}</p>
+          <button
+            type="button"
+            className="stager__notice-dismiss"
+            onClick={dismissUploadNotice}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <ul className="stager__list">
         {staged.map((item) => (

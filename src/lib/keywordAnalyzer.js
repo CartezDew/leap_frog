@@ -399,6 +399,7 @@ export function rollupByIntent(timeline, scope = 'national') {
       byIntent.set(key, {
         ...t.intent,
         keywords: 0,
+        keywordPhrases: [],
         total_volume: 0,
         est_clicks: 0,
         est_value: 0,
@@ -408,6 +409,7 @@ export function rollupByIntent(timeline, scope = 'national') {
     }
     const agg = byIntent.get(key);
     agg.keywords += 1;
+    agg.keywordPhrases.push(t.keyword);
     agg.total_volume += num(t.latest.volume);
     agg.est_clicks += num(t.est_clicks);
     agg.est_value += num(t.est_value);
@@ -420,6 +422,9 @@ export function rollupByIntent(timeline, scope = 'national') {
     .map((i) => ({
       ...i,
       avg_position: i.ranked ? i.avg_position / i.ranked : null,
+      keywordPhrases: [...i.keywordPhrases].sort((a, b) =>
+        String(a).localeCompare(String(b), undefined, { sensitivity: 'base' }),
+      ),
     }))
     .sort((a, b) => b.keywords - a.keywords);
 }

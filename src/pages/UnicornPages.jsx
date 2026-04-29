@@ -27,6 +27,7 @@ const columns = [
         {formatPercent(row.bounce_rate)}
       </span>
     ),
+    exportValue: (row) => formatPercent(row.bounce_rate),
   },
   {
     key: 'avg_engagement_time',
@@ -34,7 +35,11 @@ const columns = [
     align: 'right',
     format: (v) => `${(v || 0).toFixed(1)}s`,
   },
-  { key: 'content_role', header: 'Role' },
+  {
+    key: 'content_role',
+    header: 'Role',
+    exportValue: (row) => row.content_role ?? '',
+  },
 ];
 
 export function UnicornPages() {
@@ -74,6 +79,7 @@ export function UnicornPages() {
         rows={unicorns}
         emptyMessage="No unicorn pages detected — bounce thresholds not met or page data missing."
         defaultSort={{ key: 'bounce_rate', dir: 'asc' }}
+        exportFileStem="unicorn-pages-low-bounce"
       />
 
       {manufacturing.length > 0 && (
@@ -83,6 +89,7 @@ export function UnicornPages() {
             columns={columns}
             rows={manufacturing}
             defaultSort={{ key: 'bounce_rate', dir: 'asc' }}
+            exportFileStem="unicorn-pages-manufacturing"
           />
         </>
       )}
@@ -97,6 +104,7 @@ export function UnicornPages() {
         rows={opportunities}
         emptyMessage="No high-bounce opportunity pages."
         defaultSort={{ key: 'bounce_rate', dir: 'desc' }}
+        exportFileStem="unicorn-pages-high-bounce"
       />
     </>
   );

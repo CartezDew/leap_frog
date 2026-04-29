@@ -48,6 +48,52 @@ function defer() {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+/** SHA-256 of raw file bytes so two uploads with different names but identical
+ *  content are detected. Falls back to a fast FNV-style fingerprint when
+ *  `crypto.subtle` is unavailable (non-secure contexts). */
+export async function hashFileBuffer(buffer) {
+  if (!buffer || buffer.byteLength === 0) return 'empty';
+  if (globalThis.crypto?.subtle) {
+    const digest = await crypto.subtle.digest('SHA-256', buffer);
+    return Array.from(new Uint8Array(digest))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
+  const view = new Uint8Array(buffer);
+  let h = 2166136261 >>> 0;
+  const step = Math.max(1, Math.floor(view.length / 50000));
+  for (let i = 0; i < view.length; i += step) {
+    h ^= view[i];
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  h ^= view.length >>> 0;
+  return `fnv1a-${h.toString(16)}`;
+}
+
+function dedupeStagedItemsByContentHash(items) {
+  const firstNameByHash = new Map();
+  const unique = [];
+  const duplicates = [];
+  for (const it of items) {
+    const h = it.contentHash;
+    const fname = it.filename || it.name || '';
+    if (!h) {
+      unique.push(it);
+      continue;
+    }
+    if (firstNameByHash.has(h)) {
+      duplicates.push({
+        filename: fname,
+        duplicateOf: firstNameByHash.get(h),
+      });
+      continue;
+    }
+    firstNameByHash.set(h, fname);
+    unique.push(it);
+  }
+  return { unique, duplicates };
+}
+
 function checkExtension(filename) {
   const ext = fileExtension({ name: filename });
   if (!ALLOWED_UPLOAD_EXTENSIONS.includes(ext)) {
@@ -71,6 +117,7 @@ export async function parseFile(file, onProgress) {
   if (typeof onProgress === 'function') onProgress(0);
   const buffer = await readFileAsArrayBuffer(file, onProgress);
   await defer();
+  const contentHash = await hashFileBuffer(buffer);
 
   if (isPdf(file.name)) {
     const snapshot = await parseSemrushPdf(buffer, file.name);
@@ -85,6 +132,7 @@ export async function parseFile(file, onProgress) {
       filename: file.name,
       size: file.size,
       source: 'file',
+      contentHash,
     };
   }
 
@@ -100,6 +148,7 @@ export async function parseFile(file, onProgress) {
     filename: file.name,
     size: file.size,
     source: 'file',
+    contentHash,
   };
 }
 
@@ -113,6 +162,7 @@ export async function parseFromUploadData(entry, onProgress) {
   if (typeof onProgress === 'function') onProgress(0);
   const buffer = await fetchUploadDataFile(entry.url);
   await defer();
+  const contentHash = await hashFileBuffer(buffer);
 
   if (isPdf(entry.name)) {
     const snapshot = await parseSemrushPdf(buffer, entry.name);
@@ -128,6 +178,7 @@ export async function parseFromUploadData(entry, onProgress) {
       size: entry.size || (buffer && buffer.byteLength) || 0,
       source: 'upload_data',
       sourceUrl: entry.url,
+      contentHash,
     };
   }
 
@@ -144,6 +195,7 @@ export async function parseFromUploadData(entry, onProgress) {
     size: entry.size || (buffer && buffer.byteLength) || 0,
     source: 'upload_data',
     sourceUrl: entry.url,
+    contentHash,
   };
 }
 
@@ -291,7 +343,14 @@ export function analyzeBatch(items) {
   if (!Array.isArray(items) || items.length === 0) {
     throw new Error('No files staged for analysis.');
   }
-  const ready = items.filter(Boolean);
+  const ready = items.filter(
+    (it) =>
+      it &&
+      it.status !== 'duplicate' &&
+      it.status !== 'error' &&
+      it.status !== 'parsing' &&
+      (!it.status || it.status === 'ready'),
+  );
   if (ready.length === 0) throw new Error('No parsed files to analyze.');
 
   // Split workbook (.xlsx/.xls) inputs from Semrush PDF inputs. PDFs feed a
@@ -299,16 +358,27 @@ export function analyzeBatch(items) {
   const workbookItems = ready.filter((it) => it.kind !== 'semrush_pdf');
   const pdfItems = ready.filter((it) => it.kind === 'semrush_pdf');
 
-  const parsed = mergeParsed(workbookItems);
-  const analysisSheets = mergeAnalysisSheets(workbookItems);
-  const metadata = mergeMetadata(ready);
-  const rawTotals = mergeRawTotals(workbookItems);
+  const wbDedupe = dedupeStagedItemsByContentHash(workbookItems);
+  const pdfDedupe = dedupeStagedItemsByContentHash(pdfItems);
+  const workbookItemsUnique = wbDedupe.unique;
+  const pdfItemsUnique = pdfDedupe.unique;
+  const duplicateRollup = [...wbDedupe.duplicates, ...pdfDedupe.duplicates];
+
+  const parsed = mergeParsed(workbookItemsUnique);
+  const analysisSheets = mergeAnalysisSheets(workbookItemsUnique);
+  const analyzedInputs = [...workbookItemsUnique, ...pdfItemsUnique];
+  const metadata = mergeMetadata(analyzedInputs);
+  const rawTotals = mergeRawTotals(workbookItemsUnique);
   metadata.raw_totals = rawTotals;
+
+  if (duplicateRollup.length > 0) {
+    metadata.duplicate_files_removed = duplicateRollup;
+  }
 
   // Run GA4 analysis if we have workbook data; otherwise produce a minimal
   // payload so PDF-only uploads still yield a usable Keywords page.
   let analyzed;
-  if (workbookItems.length > 0) {
+  if (workbookItemsUnique.length > 0) {
     analyzed = runAllAnalysis(parsed, { rawTotals, analysisSheets });
   } else {
     analyzed = {
@@ -325,9 +395,9 @@ export function analyzeBatch(items) {
   // Bolt the consolidated Semrush snapshots onto the analyzed payload so
   // the Keywords page can read them via the same `analyzed` object every
   // other page consumes.
-  if (pdfItems.length > 0) {
+  if (pdfItemsUnique.length > 0) {
     analyzed.semrush_keywords = consolidateSnapshots(
-      pdfItems.map((it) => it.semrushSnapshot),
+      pdfItemsUnique.map((it) => it.semrushSnapshot),
     );
   } else {
     analyzed.semrush_keywords = [];
@@ -339,12 +409,13 @@ export function analyzeBatch(items) {
     analyzed.accuracy,
   );
 
-  const summary = ready.map((item) => ({
+  const summary = analyzedInputs.map((item) => ({
     filename: item.filename || item.name || '',
     size: item.size,
     source: item.source,
     sourceUrl: item.sourceUrl || null,
     kind: item.kind || 'workbook',
+    contentHash: item.contentHash || null,
   }));
 
   const filenameLabel =
@@ -357,10 +428,10 @@ export function analyzeBatch(items) {
   // Roll up which kinds of reports made it into this batch so the UI can
   // gate sidebar items / pages without re-inspecting `sourceFiles`.
   const kinds = {
-    workbook_count: workbookItems.length,
-    semrush_pdf_count: pdfItems.length,
-    has_ga4: workbookItems.length > 0,
-    has_semrush: pdfItems.length > 0,
+    workbook_count: workbookItemsUnique.length,
+    semrush_pdf_count: pdfItemsUnique.length,
+    has_ga4: workbookItemsUnique.length > 0,
+    has_semrush: pdfItemsUnique.length > 0,
   };
 
   return {

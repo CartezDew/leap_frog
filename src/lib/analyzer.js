@@ -33,6 +33,7 @@ import { runAccuracyCheck } from './accuracyCheck.js';
 import { decorateWithEqs, runUniqueAnalytics } from './uniqueAnalytics.js';
 import { runBounceBenchmark } from './bounceBenchmark.js';
 import { buildTopInsights } from './insightEngine.js';
+import { detectAiSource } from './levers.js';
 
 // ---------------------------------------------------------------------------
 // Generic helpers
@@ -1103,27 +1104,157 @@ export function runAllAnalysis(parsed, opts = {}) {
 
   const userSum = userSummary(usersDf);
 
-  let confirmedBotSessions = 0;
-  let likelyBotSessions = 0;
-  let suspiciousSessions = 0;
-  let humanSessions = 0;
+  // ---- AI assistant detection -------------------------------------------
+  // ChatGPT, Claude, Gemini, Perplexity, etc. behave like bots (low
+  // engagement, read-and-leave) so the city/source bot rules will often flag
+  // them. They are NOT bots — they are a distinct, valuable traffic category
+  // that deserves its own bucket on the dashboard.
+  const aiSourceKeys = new Set();
+  const aiBuckets = new Map();
+  for (const s of sourceAgg) {
+    const name = detectAiSource(s.source);
+    if (!name) continue;
+    const key = String(s.source).toLowerCase().trim();
+    aiSourceKeys.add(key);
+    if (!aiBuckets.has(name)) {
+      aiBuckets.set(name, {
+        assistant: name,
+        sessions: 0,
+        sources: 0,
+        avg_engagement_time: 0,
+        bounce_rate: 0,
+        _bounce_numer: 0,
+        _bounce_denom: 0,
+        _eng_numer: 0,
+        _eng_denom: 0,
+      });
+    }
+    const b = aiBuckets.get(name);
+    const sess = num(s.sessions, 0);
+    b.sessions += sess;
+    b.sources += 1;
+    if (sess > 0) {
+      b._bounce_numer += num(s.bounce_rate, 0) * sess;
+      b._bounce_denom += sess;
+      b._eng_numer += num(s.avg_engagement_time, 0) * sess;
+      b._eng_denom += sess;
+    }
+  }
+  const aiAssistants = [...aiBuckets.values()]
+    .map((b) => ({
+      assistant: b.assistant,
+      sessions: b.sessions,
+      sources: b.sources,
+      avg_engagement_time: b._eng_denom ? b._eng_numer / b._eng_denom : 0,
+      bounce_rate: b._bounce_denom ? b._bounce_numer / b._bounce_denom : 0,
+    }))
+    .sort((a, b) => b.sessions - a.sessions);
+  const aiAssistantSessions = aiAssistants.reduce(
+    (sum, a) => sum + a.sessions,
+    0,
+  );
+
+  // ---- Session classification — by visitor city -------------------------
+  // Each city carries a single classification, so this view is binary per
+  // city: a datacenter scoring 7+ contributes ALL its sessions to confirmed.
+  let cityConfirmed = 0;
+  let cityLikely = 0;
+  let citySuspicious = 0;
+  let cityHuman = 0;
   for (const c of cityAgg) {
     const s = num(c.sessions, 0);
-    if (c.bot_classification === 'confirmed_bot') confirmedBotSessions += s;
-    else if (c.bot_classification === 'likely_bot') likelyBotSessions += s;
-    else if (c.bot_classification === 'suspicious') suspiciousSessions += s;
-    else humanSessions += s;
+    if (c.bot_classification === 'confirmed_bot') cityConfirmed += s;
+    else if (c.bot_classification === 'likely_bot') cityLikely += s;
+    else if (c.bot_classification === 'suspicious') citySuspicious += s;
+    else cityHuman += s;
   }
+
+  // ---- Session classification — by traffic source -----------------------
+  // Same buckets, but scored against referrer/source rules. Sources tend to
+  // produce a richer gradient (some referrers are clearly spam, others are
+  // borderline) which is what populates Likely / Suspicious when cities are
+  // all-or-nothing. AI assistant sessions are pulled out so they don't
+  // contaminate either side.
+  let srcConfirmed = 0;
+  let srcLikely = 0;
+  let srcSuspicious = 0;
+  let srcHuman = 0;
+  let confirmedSourceCount = 0;
+  for (const s of sourceAgg) {
+    const key = String(s.source).toLowerCase().trim();
+    if (aiSourceKeys.has(key)) continue;
+    const sess = num(s.sessions, 0);
+    if (s.bot_classification === 'confirmed_bot') {
+      srcConfirmed += sess;
+      confirmedSourceCount += 1;
+    } else if (s.bot_classification === 'likely_bot') srcLikely += sess;
+    else if (s.bot_classification === 'suspicious') srcSuspicious += sess;
+    else srcHuman += sess;
+  }
+
+  // Distinct confirmed-bot cities (count of city rows whose bot_score crossed
+  // the confirmed threshold). Pairs with confirmedSourceCount in the KPIs.
+  let confirmedCityCount = 0;
+  for (const c of cityAgg) {
+    if (c.bot_classification === 'confirmed_bot') confirmedCityCount += 1;
+  }
+
+  // ---- Headline session counts ------------------------------------------
+  // Use the higher (more aggressive) detection per bucket across the two
+  // lenses so Likely / Suspicious actually populate when one view is binary.
+  // Human is the residual so the four buckets + AI sum to total sessions.
+  const totalSessionsAll =
+    cityConfirmed + cityLikely + citySuspicious + cityHuman;
+  const headlineConfirmed = Math.max(cityConfirmed, srcConfirmed);
+  const headlineLikely = Math.max(cityLikely, srcLikely);
+  const headlineSuspicious = Math.max(citySuspicious, srcSuspicious);
+  const headlineHuman = Math.max(
+    0,
+    totalSessionsAll -
+      headlineConfirmed -
+      headlineLikely -
+      headlineSuspicious -
+      aiAssistantSessions,
+  );
 
   const botsPayload = {
     summary: {
-      confirmed_bot_sessions: Math.round(confirmedBotSessions),
-      likely_bot_sessions: Math.round(likelyBotSessions),
-      suspicious_sessions: Math.round(suspiciousSessions),
-      human_sessions: Math.round(humanSessions),
+      // Headline counts (combined city + source view)
+      confirmed_bot_sessions: Math.round(headlineConfirmed),
+      likely_bot_sessions: Math.round(headlineLikely),
+      suspicious_sessions: Math.round(headlineSuspicious),
+      human_sessions: Math.round(headlineHuman),
+
+      // Transparent secondary lenses — each row sums to total sessions
+      city_confirmed_bot_sessions: Math.round(cityConfirmed),
+      city_likely_bot_sessions: Math.round(cityLikely),
+      city_suspicious_sessions: Math.round(citySuspicious),
+      city_human_sessions: Math.round(cityHuman),
+      source_confirmed_bot_sessions: Math.round(srcConfirmed),
+      source_likely_bot_sessions: Math.round(srcLikely),
+      source_suspicious_sessions: Math.round(srcSuspicious),
+      source_human_sessions: Math.round(srcHuman),
+
+      // Distinct dimensions that crossed the confirmed-bot threshold.
+      // Useful as a "how many bots are we actively fighting?" metric.
+      confirmed_bot_source_count: confirmedSourceCount,
+      confirmed_bot_city_count: confirmedCityCount,
+
+      // AI assistant traffic (ChatGPT, Claude, Gemini, Perplexity, etc.) —
+      // separate category, NOT bot, NOT human-organic.
+      ai_assistant_sessions: Math.round(aiAssistantSessions),
+      ai_assistant_count: aiAssistants.length,
+
+      // User-ID gradient (separate measurement angle, from User sheet)
       bot_user_ids: (userSum.confirmed_bot || 0) + (userSum.likely_bot || 0),
+      confirmed_bot_user_ids: userSum.confirmed_bot || 0,
+      likely_bot_user_ids: userSum.likely_bot || 0,
+      suspicious_user_ids: userSum.suspicious || 0,
       fractional_user_ids: userSum.fractional || 0,
+      total_user_ids: userSum.total_ids || 0,
+      human_user_ids: userSum.clean_human || 0,
     },
+    ai_assistants: aiAssistants,
     cities: [...cityAgg].sort((a, b) => num(b.sessions) - num(a.sessions)).slice(0, 60),
     sources: [...sourceAgg].sort((a, b) => num(b.sessions) - num(a.sessions)),
     methodology: {
@@ -1142,12 +1273,23 @@ export function runAllAnalysis(parsed, opts = {}) {
         'Return rate < 1% with > 20 sessions = +2',
         'Source in known spam list = +5',
       ],
+      user_rules: [
+        'User ID ends in `.2` (Cross-Device merge) = +1',
+        'User ID starts with `amp-` (AMP fallback ID) = +1',
+        'Has sessions but zero engaged sessions = +3',
+        'Avg duration < 2s with > 3 sessions = +2',
+        'Zero page views with at least 1 session = +2',
+        '> 10 sessions with engagement rate < 10% = +2',
+      ],
       thresholds: {
         confirmed_bot: '≥ 7',
         likely_bot: '4 – 6',
         suspicious: '2 – 3',
         human: '0 – 1',
       },
+      datacenter_cities: [...KNOWN_DATACENTER_CITIES],
+      spam_sources: [...KNOWN_SPAM_SOURCES],
+      ai_sources_detected: aiAssistants.map((a) => a.assistant),
     },
   };
 

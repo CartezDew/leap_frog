@@ -53,6 +53,7 @@ const channelColumns = [
         {formatPercent(row.bounce_rate)}
       </span>
     ),
+    exportValue: (row) => formatPercent(row.bounce_rate),
   },
   {
     key: 'engagement_rate',
@@ -65,6 +66,7 @@ const channelColumns = [
     header: 'Assessment',
     render: (row) => <BounceBadge value={row.bounce_rate} />,
     sortValue: (row) => row.bounce_rate,
+    exportValue: (row) => row.tier ?? formatPercent(row.bounce_rate),
   },
 ];
 
@@ -85,6 +87,7 @@ const opportunityColumns = [
         {formatPercent(row.bounce_rate)}
       </span>
     ),
+    exportValue: (row) => formatPercent(row.bounce_rate),
   },
   {
     key: 'avg_engagement_time',
@@ -95,6 +98,7 @@ const opportunityColumns = [
   {
     key: 'content_role',
     header: 'Role',
+    exportValue: (row) => row.content_role ?? '',
   },
 ];
 
@@ -125,6 +129,8 @@ function buildBounceStoryCards({ benchmark, bounce, summary }) {
       headline: `${tier?.label || 'Average'} band`,
       caption: deltaText,
       footer: `Industry median: ${formatPercent(median, 1)}`,
+      to: '#bounce-benchmark-scale',
+      ctaLabel: 'Open benchmark scale',
     });
   }
 
@@ -141,6 +147,8 @@ function buildBounceStoryCards({ benchmark, bounce, summary }) {
       headline: worst.name,
       caption: `${formatInteger(worst.sessions)} sessions sitting in the "${worst.tier?.label}" band.`,
       footer: 'Top recommendation below tackles this.',
+      to: '#bounce-by-channel',
+      ctaLabel: 'Jump to channel table',
     });
   }
 
@@ -156,6 +164,8 @@ function buildBounceStoryCards({ benchmark, bounce, summary }) {
       headline: best.name,
       caption: `${formatInteger(best.sessions)} sessions in the "${best.tier?.label}" band — copy what works.`,
       footer: best.tier?.id === 'excellent' ? 'Best-in-class' : 'Above average',
+      to: '#bounce-by-channel',
+      ctaLabel: 'Jump to channel table',
     });
   }
 
@@ -178,6 +188,8 @@ function buildBounceStoryCards({ benchmark, bounce, summary }) {
         swing >= 10
           ? 'Investigate campaigns or layout changes in peak month.'
           : 'Healthy month-over-month consistency.',
+      to: '#bounce-homepage-trend',
+      ctaLabel: 'Open homepage trend',
     });
   } else if (summary) {
     cards.push({
@@ -188,6 +200,8 @@ function buildBounceStoryCards({ benchmark, bounce, summary }) {
       headline: `${formatPercent(summary.engagement_rate || 0, 1)} engagement rate`,
       caption: 'The other side of bounce — sessions that stuck around.',
       footer: `${formatInteger(summary.total_sessions || 0)} total sessions`,
+      to: '#bounce-by-channel',
+      ctaLabel: 'Jump to channel table',
     });
   }
 
@@ -221,7 +235,6 @@ export function BounceRate() {
         badge="Industry benchmarked"
         badgeVariant="green"
         title="Bounce Rate"
-        subtitle={bounce.definition || '1 − Engaged Sessions ÷ Sessions'}
       />
 
       <StoryCards
@@ -231,25 +244,32 @@ export function BounceRate() {
         ariaLabel="Bounce-rate benchmark callouts"
       />
 
-      <BenchmarkScale
-        benchmark={benchmark}
-        channels={benchChannels}
-        pages={benchPages}
-      />
+      <div id="bounce-benchmark-scale" className="scroll-anchor">
+        <BenchmarkScale
+          benchmark={benchmark}
+          channels={benchChannels}
+          pages={benchPages}
+        />
+      </div>
 
       <BounceRecommendations recommendations={benchmark?.recommendations || []} />
 
-      <h2 className="section-header">Bounce by <em>channel</em></h2>
+      <h2 id="bounce-by-channel" className="section-header scroll-anchor">
+        Bounce by <em>channel</em>
+      </h2>
       <DataTable
         columns={channelColumns}
         rows={bounce.by_channel || []}
         emptyMessage="Medium data not provided in this upload."
         defaultSort={{ key: 'sessions', dir: 'desc' }}
+        exportFileStem="bounce-by-channel"
       />
 
       {homepage.length > 0 && (
         <>
-          <h2 className="section-header">Homepage bounce <em>trend</em></h2>
+          <h2 id="bounce-homepage-trend" className="section-header scroll-anchor">
+            Homepage bounce <em>trend</em>
+          </h2>
           <p className="section-subhead">
             Shaded bands show industry tiers. The dashed line is the B2B services
             median (47.5%). Anything below the green band is best-in-class.
@@ -299,6 +319,7 @@ export function BounceRate() {
         rows={bounce.high_bounce_opportunities || []}
         emptyMessage="No high-traffic, high-bounce pages — congrats."
         defaultSort={{ key: 'bounce_rate', dir: 'desc' }}
+        exportFileStem="bounce-high-bounce-pages"
       />
 
       <h2 className="section-header">Pages with <em>low</em> bounce</h2>
@@ -313,6 +334,7 @@ export function BounceRate() {
         rows={analyzed.unicorns || []}
         emptyMessage="No high-traffic, low-bounce pages detected yet."
         defaultSort={{ key: 'bounce_rate', dir: 'asc' }}
+        exportFileStem="bounce-low-bounce-pages"
       />
     </>
   );

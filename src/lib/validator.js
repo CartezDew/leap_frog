@@ -106,6 +106,9 @@ export function generateValidationReport(metadata, verification = null, accuracy
     status,
     message,
     filename: metadata?.filename || '',
+    duplicate_files_removed: Array.isArray(metadata?.duplicate_files_removed)
+      ? metadata.duplicate_files_removed
+      : [],
     sheets_found: sheetsFound,
     sheets_missing: sheetsMissing,
     classifications: Object.entries(classifications).map(([sheet, category]) => ({

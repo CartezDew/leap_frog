@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import {
   LuLightbulb,
   LuCircleAlert,
@@ -5,6 +6,7 @@ import {
   LuSparkles,
   LuCheckCheck,
   LuSearch,
+  LuArrowRight,
 } from 'react-icons/lu';
 
 import { PageHeader } from '../components/PageHeader/PageHeader.jsx';
@@ -20,30 +22,66 @@ function num(v) {
   return Number.isFinite(n) ? n : 0;
 }
 
-// Map an insight `id` to the dashboard route most relevant to it.
-// Used as a fallback when the insight doesn't ship its own
-// `playbook.where_to_look.route`.
-function routeForInsight(insight) {
+// Friendly page names for the dashboard tabs an insight can deep-link into.
+// Used to label CTAs like "View Bounce Rate →" so the destination is obvious
+// before the user clicks.
+const ROUTE_LABELS = {
+  '/bounce': 'Bounce Rate',
+  '/sources': 'Traffic Sources',
+  '/pages': 'Page Path Analysis',
+  '/unicorns': 'Unicorn Pages',
+  '/contact': 'Contact Form Intel',
+  '/users': 'User ID Engagement',
+  '/bots': 'Bot Traffic',
+  '/keywords': 'Keyword Intel',
+  '/seo-aeo': 'SEO & AEO',
+  '/overview': 'Overview',
+};
+
+// Map an insight to the specific dashboard tab that contains the underlying
+// data — returns `{ route, label }` or `null` when there isn't a meaningful
+// destination. We deliberately return `null` for signals whose "data" is
+// scattered across the same Overview page the user is already on (e.g.
+// monthly-anomalies, trust-score) so we don't ship a CTA that goes nowhere
+// useful — every button on a card has to earn its place.
+function destinationForInsight(insight) {
   if (!insight) return null;
-  const fromPlaybook = insight.playbook?.where_to_look?.route;
-  if (fromPlaybook) return fromPlaybook;
+
+  const fromPlaybook = insight.playbook?.where_to_look;
+  if (fromPlaybook?.route) {
+    return {
+      route: fromPlaybook.route,
+      label: fromPlaybook.label || ROUTE_LABELS[fromPlaybook.route] || 'data',
+    };
+  }
 
   const id = String(insight.id || '');
-  if (id.startsWith('site-bounce') || id.startsWith('homepage-spike'))
-    return '/bounce';
-  if (id.startsWith('worst-channel') || id.startsWith('scale-channel'))
-    return '/sources';
-  if (id === 'ai-search-emerging' || id === 'email-quality') return '/sources';
-  if (id === 'new-users-low' || id === 'new-users-very-high') return '/sources';
-  if (id === 'refresh-candidates' || id === 'page-concentration')
-    return '/pages';
-  if (id === 'unicorn-pages') return '/unicorns';
-  if (id.startsWith('sales-leads') || id === 'contact-spam') return '/contact';
-  if (id === 'multi-month-research' || id === 'fractional-cookies')
-    return '/users';
-  if (id === 'bot-filter') return '/bots';
-  if (id === 'monthly-anomalies' || id === 'trust-score') return '/overview';
-  return '/overview';
+  let route = null;
+  if (id.startsWith('site-bounce') || id.startsWith('homepage-spike')) {
+    route = '/bounce';
+  } else if (
+    id.startsWith('worst-channel') ||
+    id.startsWith('scale-channel') ||
+    id === 'ai-search-emerging' ||
+    id === 'email-quality' ||
+    id === 'new-users-low' ||
+    id === 'new-users-very-high'
+  ) {
+    route = '/sources';
+  } else if (id === 'refresh-candidates' || id === 'page-concentration') {
+    route = '/pages';
+  } else if (id === 'unicorn-pages') {
+    route = '/unicorns';
+  } else if (id.startsWith('sales-leads') || id === 'contact-spam') {
+    route = '/contact';
+  } else if (id === 'multi-month-research' || id === 'fractional-cookies') {
+    route = '/users';
+  } else if (id === 'bot-filter') {
+    route = '/bots';
+  }
+
+  if (!route) return null;
+  return { route, label: ROUTE_LABELS[route] || 'data' };
 }
 
 function buildStoryCards(analyzed) {
@@ -92,8 +130,12 @@ function buildStoryCards(analyzed) {
 
   // Card 2 — top priority focus. Clicking jumps to the dashboard page that
   // backs that specific insight (uses the playbook hint when the signal
-  // ships one, otherwise an id-based fallback).
+  // ships one, otherwise an id-based fallback). When the insight has no
+  // specific destination (e.g. trust score / monthly anomalies that already
+  // live on the Overview tab), the CTA is omitted rather than sending the
+  // user somewhere unhelpful.
   const top = high[0] || medium[0] || low[0];
+  const topDest = destinationForInsight(top);
   const topPriorityCard = top
     ? {
         id: 'top-priority',
@@ -119,11 +161,8 @@ function buildStoryCards(analyzed) {
             : medium.length > 0
               ? `+${medium.length} medium-priority follow-up${medium.length === 1 ? '' : 's'}`
               : 'No further high-priority items.',
-        to: routeForInsight(top),
-        ctaLabel:
-          top.playbook?.where_to_look?.label
-            ? `Open ${top.playbook.where_to_look.label}`
-            : 'Open the data',
+        to: topDest?.route || null,
+        ctaLabel: topDest ? `Open ${topDest.label}` : null,
       }
     : {
         id: 'top-priority',
@@ -282,15 +321,28 @@ export function ActionableInsights() {
       <>
         <h2 className="section-header">{title}</h2>
         <div className="card-grid">
-          {list.map((ins, i) => (
-            <div key={i} className={`insight insight--${ins.priority || 'info'}`}>
-              <div className="insight__head">
-                <h3 className="insight__title">{ins.title}</h3>
-                <PriorityBadge priority={ins.priority} />
+          {list.map((ins, i) => {
+            const dest = destinationForInsight(ins);
+            return (
+              <div key={i} className={`insight insight--${ins.priority || 'info'}`}>
+                <div className="insight__head">
+                  <h3 className="insight__title">{ins.title}</h3>
+                  <PriorityBadge priority={ins.priority} />
+                </div>
+                <p className="insight__evidence">{ins.evidence}</p>
+                {dest && (
+                  <Link
+                    to={dest.route}
+                    className={`insight__cta insight__cta--${ins.priority || 'info'}`}
+                    aria-label={`View ${dest.label} — supporting data for "${ins.title}"`}
+                  >
+                    View {dest.label}
+                    <LuArrowRight size={14} aria-hidden="true" />
+                  </Link>
+                )}
               </div>
-              <p className="insight__evidence">{ins.evidence}</p>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </>
     ) : null;
