@@ -10,7 +10,6 @@
 //   - SERP page mix donut + monthly average position trend
 //   - Theme heatmap (Talkwalker-style topic clustering, gated to 4+ months)
 //   - Top movers / decliners — momentum like a social listening platform
-//   - Quick-wins matrix (volume × current rank)
 //   - Estimated traffic value bar
 //   - Cross-link panel: which GA4 landing pages match each keyword theme
 //   - Underperformers panel: pages that rank but bleed visitors
@@ -27,12 +26,9 @@ import {
   LineChart,
   Pie,
   PieChart,
-  Scatter,
-  ScatterChart,
   Tooltip,
   XAxis,
   YAxis,
-  ZAxis,
 } from 'recharts';
 
 import {
@@ -47,6 +43,7 @@ import {
   LuSearch,
   LuSparkles,
   LuFileText,
+  LuCircleHelp,
 } from 'react-icons/lu';
 
 import { PageHeader } from '../../components/PageHeader/PageHeader.jsx';
@@ -141,6 +138,29 @@ function HeatCell({ avgPosition }) {
   );
 }
 
+function isSemrushSourceFile(file) {
+  const filename = file?.filename || '';
+  return file?.kind === 'semrush_pdf' || /\.pdf$/i.test(filename);
+}
+
+function buildSourceReminder(sourceFiles, fallbackLabel) {
+  const semrushFiles = (sourceFiles || []).filter(isSemrushSourceFile);
+  const relevantFiles = semrushFiles.length > 0 ? semrushFiles : sourceFiles || [];
+  const names = relevantFiles.map((file) => file.filename).filter(Boolean);
+
+  if (names.length === 0) {
+    return {
+      label: 'Connected (0)',
+      title: fallbackLabel,
+    };
+  }
+
+  return {
+    label: `Connected (${names.length})`,
+    title: names.join('\n'),
+  };
+}
+
 function KeywordsEmptyState() {
   return (
     <>
@@ -184,7 +204,7 @@ function KeywordsEmptyState() {
 }
 
 export function Keywords() {
-  const { analyzed } = useData();
+  const { analyzed, filenameLabel, sourceFiles } = useData();
   const [scope, setScope] = useState('national');
 
   const data = useMemo(() => runKeywordAnalysis(analyzed), [analyzed]);
@@ -244,6 +264,10 @@ export function Keywords() {
   const serpMix = data.serp_mix;
   const intents = data.intents;
   const cross = data.cross;
+  const sourceReminder = buildSourceReminder(
+    sourceFiles,
+    filenameLabel || data.source,
+  );
 
   const latestSummary = trend[trend.length - 1];
   const firstSummary = trend[0];
@@ -336,16 +360,6 @@ export function Keywords() {
     },
   ];
 
-  // ---- Quick-wins scatter data ----
-  const scatterData = insights.quick_wins.slice(0, 25).map((kw) => ({
-    x: kw.latest.position,
-    y: kw.latest.volume || 0,
-    z: 12,
-    keyword: kw.keyword,
-    theme: kw.theme.label,
-    color: kw.theme.color,
-  }));
-
   // ---- Movers/decliners table rows ----
   const moverColumns = [
     {
@@ -401,53 +415,6 @@ export function Keywords() {
       render: (row) =>
         row.est_value > 0 ? `$${formatInteger(row.est_value)}` : '—',
       sortValue: (row) => row.est_value || 0,
-    },
-  ];
-
-  // ---- Quick wins table rows ----
-  const quickWinsColumns = [
-    {
-      key: 'keyword',
-      header: 'Keyword',
-      className: 'col-strong',
-      render: (row) => (
-        <div className="kw-cell-keyword">
-          <span className="kw-cell-keyword__text">{row.keyword}</span>
-          <span className="kw-cell-keyword__theme">
-            <ThemeChip theme={row.theme} />
-          </span>
-        </div>
-      ),
-      sortValue: (row) => row.keyword,
-    },
-    {
-      key: 'now',
-      header: 'Current',
-      align: 'right',
-      render: (row) => <PositionPill position={row.latest.position} />,
-      sortValue: (row) => row.latest.position ?? 999,
-    },
-    {
-      key: 'volume',
-      header: 'Monthly volume',
-      align: 'right',
-      render: (row) => formatInteger(row.latest.volume) || '—',
-      sortValue: (row) => row.latest.volume ?? 0,
-    },
-    {
-      key: 'cpc',
-      header: 'CPC',
-      align: 'right',
-      render: (row) =>
-        row.latest.cpc ? `$${row.latest.cpc.toFixed(2)}` : '—',
-      sortValue: (row) => row.latest.cpc ?? 0,
-    },
-    {
-      key: 'win_score',
-      header: 'Win score',
-      align: 'right',
-      render: (row) => formatInteger(Math.round(row.win_score)),
-      sortValue: (row) => row.win_score || 0,
     },
   ];
 
@@ -529,31 +496,36 @@ export function Keywords() {
         title="Keywords Intelligence"
         subtitle={`Topic clustering, momentum, and SERP movement for ${data.domain} — tied back to the GA4 landing pages those rankings drive traffic to.`}
         meta={
-          <div className="page-meta__stamp">
-            Source
-            <strong>{data.source}</strong>
-          </div>
-        }
-        actions={
-          <div
-            className="kw-scope-toggle"
-            role="tablist"
-            aria-label="Ranking scope"
-          >
-            {SCOPE_OPTIONS.map((opt) => (
-              <button
-                key={opt.id}
-                type="button"
-                role="tab"
-                aria-selected={scope === opt.id}
-                className={`kw-scope-toggle__btn${
-                  scope === opt.id ? ' is-active' : ''
-                }`}
-                onClick={() => setScope(opt.id)}
-              >
-                {opt.label}
-              </button>
-            ))}
+          <div className="kw-header-controls">
+            <Link
+              to="/upload"
+              className="page-meta__stamp kw-source-link"
+              title={sourceReminder.title}
+              aria-label="Open Upload / Replace Data for these source files"
+            >
+              Source
+              <strong>{sourceReminder.label}</strong>
+            </Link>
+            <div
+              className="kw-scope-toggle"
+              role="tablist"
+              aria-label="Ranking scope"
+            >
+              {SCOPE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={scope === opt.id}
+                  className={`kw-scope-toggle__btn${
+                    scope === opt.id ? ' is-active' : ''
+                  }`}
+                  onClick={() => setScope(opt.id)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </div>
         }
       />
@@ -731,22 +703,34 @@ export function Keywords() {
 
       {/* ---- Intent buckets (Talkwalker-style) ---------------------------- */}
       <h2 className="section-header">
-        Buyer <em>intent mix</em>
+        Searcher <em>intent mix</em>
         <span className="section-header__hint">
-          <LuGoal size={14} aria-hidden="true" /> what searchers actually want
+          <LuGoal size={14} aria-hidden="true" /> potential customers, not advertisers
         </span>
       </h2>
       <p className="section-subhead">
-        Each tracked keyword bucketed by funnel intent. Investment should follow demand —
-        if "Service Intent" dominates volume, the homepage and city service pages should be
-        the highest-priority SEO assets.
+        Each tracked Semrush keyword is grouped by what the searcher appears to want.
+        The large number is a keyword count — not people, leads, or ad buyers.
       </p>
       <div className="kw-intent-grid">
         {intents.map((intent) => (
           <article key={intent.key} className={`kw-intent kw-intent--${intent.tone}`}>
             <header className="kw-intent__head">
               <p className="kw-intent__label">{intent.label}</p>
-              <span className="kw-intent__count">{intent.keywords}</span>
+              <div className="kw-intent__scope-rollup">
+                <button
+                  type="button"
+                  className="kw-intent__help"
+                  aria-label={`${intent.keywords} tracked keywords are classified as ${intent.label}. This is not a count of people, leads, or advertisers.`}
+                  data-tooltip={`${intent.keywords} tracked Semrush keyword${intent.keywords === 1 ? '' : 's'} in this intent bucket. Not people, leads, or advertisers.`}
+                >
+                  <LuCircleHelp size={13} aria-hidden="true" />
+                </button>
+                <span className="kw-intent__count">{intent.keywords}</span>
+                <span className="kw-intent__count-label">
+                  keyword{intent.keywords === 1 ? '' : 's'}
+                </span>
+              </div>
             </header>
             <p className="kw-intent__desc">{intent.description}</p>
             <dl className="kw-intent__stats">
@@ -776,7 +760,7 @@ export function Keywords() {
       </div>
 
       {/* ---- Movers / decliners side by side ------------------------------ */}
-      <div className="card-grid card-grid--cols-2">
+      <div className="kw-momentum-stack">
         <div>
           <h2 className="section-header">
             Top <em>movers</em>
@@ -817,84 +801,6 @@ export function Keywords() {
               columns={moverColumns}
               rows={insights.decliners.slice(0, 12)}
               defaultSort={{ key: 'mom_delta', dir: 'asc' }}
-            />
-          )}
-        </div>
-      </div>
-
-      {/* ---- Quick wins matrix + scatter ---------------------------------- */}
-      <h2 className="section-header">
-        Quick-win <em>matrix</em>
-        <span className="section-header__hint">
-          <LuRocket size={14} aria-hidden="true" /> page 2 → page 1 candidates
-        </span>
-      </h2>
-      <p className="section-subhead">
-        Keywords currently ranking #11–20. They already exist in Google's eyes — small
-        on-page improvements (better title, internal links, refreshed copy) usually push
-        them onto page 1 within a single sprint. Bigger circles = bigger volume.
-      </p>
-      <div className="card-grid card-grid--cols-2 kw-grid-stretch">
-        <div className="kw-cell">
-          <ChartWrapper height={320}>
-            <ScatterChart margin={{ top: 12, right: 16, left: 0, bottom: 8 }}>
-              <CartesianGrid stroke="#e5e7eb" strokeDasharray="3 3" />
-              <XAxis
-                type="number"
-                dataKey="x"
-                name="Position"
-                domain={[10, 22]}
-                tickFormatter={(v) => `#${v}`}
-                stroke="#6b7280"
-              />
-              <YAxis
-                type="number"
-                dataKey="y"
-                name="Volume"
-                stroke="#6b7280"
-                tickFormatter={(v) => formatInteger(v)}
-              />
-              <ZAxis type="number" dataKey="z" range={[80, 320]} />
-              <Tooltip
-                cursor={{ strokeDasharray: '3 3' }}
-                content={({ active, payload }) => {
-                  if (!active || !payload?.length) return null;
-                  const p = payload[0].payload;
-                  return (
-                    <div className="kw-tooltip">
-                      <strong>{p.keyword}</strong>
-                      <div className="kw-tooltip__row">
-                        <span>Theme</span>
-                        <em>{p.theme}</em>
-                      </div>
-                      <div className="kw-tooltip__row">
-                        <span>Position</span>
-                        <em>#{p.x}</em>
-                      </div>
-                      <div className="kw-tooltip__row">
-                        <span>Volume</span>
-                        <em>{formatInteger(p.y)}</em>
-                      </div>
-                    </div>
-                  );
-                }}
-              />
-              <Scatter data={scatterData}>
-                {scatterData.map((d, idx) => (
-                  <Cell key={idx} fill={d.color} />
-                ))}
-              </Scatter>
-            </ScatterChart>
-          </ChartWrapper>
-        </div>
-        <div className="kw-cell">
-          {insights.quick_wins.length === 0 ? (
-            <p className="muted">No keywords in the page-2 sweet spot — try a wider Semrush list.</p>
-          ) : (
-            <DataTable
-              columns={quickWinsColumns}
-              rows={insights.quick_wins.slice(0, 10)}
-              defaultSort={{ key: 'win_score', dir: 'desc' }}
             />
           )}
         </div>
@@ -1033,6 +939,9 @@ export function Keywords() {
             ))}
           </ul>
           <div className="kw-bleed-cta">
+            <Link to="/seo-aeo" className="kw-link-cta">
+              Open SEO / AEO Crawl <LuSparkles size={14} aria-hidden="true" />
+            </Link>
             <Link to="/pages" className="kw-link-cta">
               Open Page Path Analysis <LuArrowUpRight size={14} aria-hidden="true" />
             </Link>

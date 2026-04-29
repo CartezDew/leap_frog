@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 
 import { Layout } from './components/Layout/Layout.jsx';
 import { useData } from './context/DataContext.jsx';
-import { About } from './pages/About.jsx';
+import { About, HowToUse } from './pages/About.jsx';
 import { ActionableInsights } from './pages/ActionableInsights.jsx';
 import { BotTraffic } from './pages/BotTraffic.jsx';
 import { BounceRate } from './pages/BounceRate.jsx';
@@ -12,6 +12,7 @@ import { ExecutiveSummary } from './pages/ExecutiveSummary.jsx';
 import { Home } from './pages/Home.jsx';
 import { Keywords } from './pages/Keywords/Keywords.jsx';
 import { PagePathAnalysis } from './pages/PagePathAnalysis.jsx';
+import { SeoAeo } from './pages/SeoAeo/SeoAeo.jsx';
 import { TrafficSources } from './pages/TrafficSources.jsx';
 import { UnicornPages } from './pages/UnicornPages.jsx';
 import { UploadPage } from './pages/UploadPage.jsx';
@@ -46,10 +47,12 @@ export function App() {
         <Route element={<Layout />}>
           <Route path="/" element={<HomeOrUpload />} />
           <Route path="/about" element={<About />} />
+          <Route path="/how-to-use" element={<HowToUse />} />
           <Route path="/overview" element={<ExecutiveSummary />} />
           <Route path="/upload" element={<UploadPage />} />
           <Route path="/insights" element={<ActionableInsights />} />
           <Route path="/keywords" element={<Keywords />} />
+          <Route path="/seo-aeo" element={<SeoAeo />} />
           <Route path="/bounce" element={<BounceRate />} />
           <Route path="/users" element={<UserEngagement />} />
           <Route path="/sources" element={<TrafficSources />} />

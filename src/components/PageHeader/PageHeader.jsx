@@ -24,28 +24,40 @@ export function PageHeader({
   badge,
   badgeVariant = 'purple',
 }) {
+  const hasMeta = Boolean(meta || actions);
+
   return (
     <header className="page-header">
       <div className="page-header__lead">
-        {badge && (
-          <span
-            className={`page-badge${
-              badgeVariant === 'green' ? ' page-badge--green' : ''
+        {(badge || hasMeta) && (
+          <div
+            className={`page-header__eyebrow-row${
+              hasMeta ? ' page-header__eyebrow-row--has-meta' : ''
             }`}
           >
-            <span className="page-badge__dot" />
-            {badge}
-          </span>
+            {badge ? (
+              <span
+                className={`page-badge${
+                  badgeVariant === 'green' ? ' page-badge--green' : ''
+                }`}
+              >
+                <span className="page-badge__dot" />
+                {badge}
+              </span>
+            ) : (
+              <span aria-hidden="true" />
+            )}
+            {hasMeta && (
+              <div className="page-meta">
+                {meta}
+                {actions}
+              </div>
+            )}
+          </div>
         )}
         <h1 className="page-title">{renderTitle(title)}</h1>
         {subtitle && <p className="page-subtitle">{subtitle}</p>}
       </div>
-      {(meta || actions) && (
-        <div className="page-meta">
-          {meta}
-          {actions}
-        </div>
-      )}
     </header>
   );
 }

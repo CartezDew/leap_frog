@@ -32,19 +32,21 @@ import { answerQuestion, defaultSuggestions } from '../../lib/chatEngine.js';
 import frogAvatar from '../../images/bus-frog.webp';
 
 const STARTER_PROMPTS = [
-  'Give me a high-level summary',
-  'What are my top traffic sources?',
-  'How does my bounce rate compare to industry?',
-  'Which pages bleed visitors?',
-  'How many leads came in?',
-  'What was my best month?',
-  'Are there any bots in my data?',
-  'Show me my unicorn pages',
+  'Tell me something I don’t know',
+  'What is our current homepage bounce rate?',
+  'How much of our traffic is bots?',
+  'Is the bounce rate objective already met after bot filtering?',
+  'Which recommendation has the biggest impact?',
+  'How many genuine leads did we get?',
+  'What should we prioritize first?',
+  'How do I explain this dashboard to a client?',
 ];
 
 const STARTER_PROMPTS_NO_DATA = [
   'What can you do?',
   'How do I upload my GA4 data?',
+  'What file format does the dashboard accept?',
+  'Why is a section grayed out?',
   'What is a bounce rate?',
   'What is an engaged session?',
 ];
@@ -312,8 +314,9 @@ export function AIChat() {
                 </h3>
                 <p className="frog-chat__welcome-copy">
                   I answer with numbers I can prove from your uploaded GA4
-                  workbook. If a question isn't in your data, I'll point you
-                  to a curated web search instead of making something up.
+                  workbook, distinguish reported vs clean traffic when possible,
+                  and point you to the dashboard section that shows the evidence.
+                  If a question needs outside context, I’ll say what is missing.
                 </p>
                 <div className="frog-chat__welcome-section-label">
                   Try one of these

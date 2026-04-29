@@ -1,4 +1,4 @@
-// Top navigation bar: About, Overview (or Get Started).
+// Top navigation bar: Help, Overview (or Get Started).
 //
 // - "Overview" routes to the executive summary view, but only once data has
 //   been uploaded. Until then, the same tab control reads "Get Started" and
@@ -12,12 +12,14 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
+  LuChevronDown,
   LuMenu,
   LuX,
   LuInfo,
   LuCompass,
   LuRocket,
   LuTriangleAlert,
+  LuBookOpen,
 } from 'react-icons/lu';
 
 import { useData } from '../../context/DataContext.jsx';
@@ -26,23 +28,29 @@ import mainLogo from '../../images/Main_Logo.webp';
 export function Topbar() {
   const { hasData, isSyntheticData } = useData();
   const [open, setOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const menuId = useId();
   const navRef = useRef(null);
   const location = useLocation();
 
   useEffect(() => {
     setOpen(false);
+    setHelpOpen(false);
   }, [location.pathname]);
 
   useEffect(() => {
-    if (!open) return undefined;
+    if (!open && !helpOpen) return undefined;
     function onClick(event) {
       if (navRef.current && !navRef.current.contains(event.target)) {
         setOpen(false);
+        setHelpOpen(false);
       }
     }
     function onKey(event) {
-      if (event.key === 'Escape') setOpen(false);
+      if (event.key === 'Escape') {
+        setOpen(false);
+        setHelpOpen(false);
+      }
     }
     document.addEventListener('mousedown', onClick);
     document.addEventListener('keydown', onKey);
@@ -50,16 +58,20 @@ export function Topbar() {
       document.removeEventListener('mousedown', onClick);
       document.removeEventListener('keydown', onKey);
     };
-  }, [open]);
+  }, [open, helpOpen]);
 
   const overview = hasData
     ? { to: '/overview', label: 'Overview', icon: LuCompass }
     : { to: '/upload', label: 'Get Started', icon: LuRocket };
 
   const items = [
-    { to: '/about', label: 'About', icon: LuInfo },
     { ...overview, end: false, isOverview: true },
   ];
+  const helpItems = [
+    { to: '/about', label: 'About', icon: LuInfo },
+    { to: '/how-to-use', label: 'How to Use', icon: LuBookOpen },
+  ];
+  const helpActive = helpItems.some((item) => item.to === location.pathname);
 
   return (
     <header className="topbar" aria-label="Primary site navigation">
@@ -99,6 +111,45 @@ export function Topbar() {
           className={`topbar__nav${open ? ' topbar__nav--open' : ''}`}
           aria-label="Primary"
         >
+          <div className={`topbar__dropdown${helpActive ? ' is-active' : ''}${helpOpen ? ' is-open' : ''}`}>
+            <button
+              type="button"
+              className="topbar__link topbar__dropdown-trigger"
+              aria-haspopup="true"
+              aria-expanded={helpOpen}
+              onClick={() => setHelpOpen((value) => !value)}
+            >
+              <span className="topbar__link-icon" aria-hidden="true">
+                <LuInfo size={16} />
+              </span>
+              <span className="topbar__link-label">Help</span>
+              <LuChevronDown className="topbar__dropdown-caret" size={14} aria-hidden="true" />
+            </button>
+            <div className="topbar__dropdown-menu">
+              {helpItems.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <NavLink
+                    key={item.label}
+                    to={item.to}
+                    className={({ isActive }) =>
+                      [
+                        'topbar__dropdown-link',
+                        isActive ? 'is-active' : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ')
+                    }
+                  >
+                    <span className="topbar__link-icon" aria-hidden="true">
+                      <Icon size={15} />
+                    </span>
+                    {item.label}
+                  </NavLink>
+                );
+              })}
+            </div>
+          </div>
           {items.map((item) => {
             const Icon = item.icon;
             const isCta = Boolean(item.isOverview && !hasData);

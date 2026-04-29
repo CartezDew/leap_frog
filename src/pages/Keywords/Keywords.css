@@ -86,6 +86,50 @@
 
 /* ---- Scope toggle ------------------------------------------------------- */
 
+.kw-header-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.kw-header-controls .page-meta__stamp {
+  text-align: right;
+}
+
+.kw-source-link {
+  display: block;
+  max-width: min(360px, 42vw);
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.kw-source-link:hover,
+.kw-source-link:focus-visible {
+  color: var(--brand-purple);
+  text-decoration: none;
+}
+
+.kw-source-link strong {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--text-body);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.kw-source-link:focus-visible {
+  outline: 2px solid rgba(82, 46, 145, 0.35);
+  outline-offset: 4px;
+  border-radius: 8px;
+}
+
 .kw-scope-toggle {
   display: inline-flex;
   background: var(--bg-card);
@@ -363,11 +407,86 @@
   color: var(--text-dark);
   letter-spacing: -0.005em;
 }
+.kw-intent__scope-rollup {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  justify-content: end;
+  column-gap: 5px;
+  row-gap: 1px;
+  min-width: 72px;
+}
+.kw-intent__help {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 19px;
+  height: 19px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--brand-purple-soft);
+  color: var(--brand-purple);
+  cursor: help;
+}
+.kw-intent__help::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  right: -4px;
+  bottom: calc(100% + 8px);
+  z-index: 3;
+  width: min(240px, 70vw);
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: var(--brand-purple-dark);
+  color: var(--text-white);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: left;
+  box-shadow: var(--shadow-elevated);
+  opacity: 0;
+  transform: translateY(4px);
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.kw-intent__help::before {
+  content: '';
+  position: absolute;
+  right: 5px;
+  bottom: calc(100% + 3px);
+  z-index: 4;
+  border: 5px solid transparent;
+  border-top-color: var(--brand-purple-dark);
+  opacity: 0;
+  transform: translateY(4px);
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.kw-intent__help:hover::after,
+.kw-intent__help:focus-visible::after,
+.kw-intent__help:hover::before,
+.kw-intent__help:focus-visible::before {
+  opacity: 1;
+  transform: translateY(0);
+}
 .kw-intent__count {
   font-size: 18px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   color: var(--brand-purple);
+  line-height: 1;
+}
+.kw-intent__count-label {
+  grid-column: 1 / -1;
+  justify-self: end;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  color: var(--text-muted);
+  text-transform: uppercase;
 }
 .kw-intent__desc {
   margin: 0;
@@ -402,6 +521,19 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ---- Momentum tables ---------------------------------------------------- */
+
+.kw-momentum-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  margin-bottom: 24px;
+}
+
+.kw-momentum-stack > * {
+  min-width: 0;
+}
+
 /* ---- Brand fortress vertical list -------------------------------------- */
 
 .kw-list {
@@ -426,37 +558,6 @@
   font-weight: 600;
   color: var(--text-dark);
   font-size: 13px;
-}
-
-/* ---- Scatter chart tooltip --------------------------------------------- */
-
-.kw-tooltip {
-  background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: 8px;
-  padding: 10px 12px;
-  font-size: 12px;
-  color: var(--text-body);
-  box-shadow: var(--shadow-card);
-  min-width: 180px;
-}
-.kw-tooltip strong {
-  display: block;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text-dark);
-  margin-bottom: 6px;
-}
-.kw-tooltip__row {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-}
-.kw-tooltip__row em {
-  font-style: normal;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-dark);
 }
 
 /* ---- Inline section header (slightly smaller than h2) ------------------ */
@@ -585,6 +686,14 @@
 }
 
 @media (max-width: 720px) {
+  .kw-header-controls {
+    align-items: flex-start;
+  }
+
+  .kw-header-controls .page-meta__stamp {
+    text-align: left;
+  }
+
   .kw-heat thead th.kw-heat__theme-col,
   .kw-heat tbody th {
     width: auto;

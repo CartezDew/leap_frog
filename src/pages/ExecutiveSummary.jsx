@@ -145,7 +145,23 @@ function MonthlyTrendHighlights({ topSessions, topBounce }) {
 // workbook, the GA4 KPI strip / monthly trend / trust score have nothing to
 // show. Surface a focused Semrush snapshot instead so the page is still
 // useful at-a-glance, with a clear CTA to upload GA4 to unlock the rest.
-function SemrushOnlyOverview({ analyzed, filename, uploadedAt }) {
+function sourceCountLabel(sourceFiles, fallbackFilename) {
+  const count = Array.isArray(sourceFiles) && sourceFiles.length > 0
+    ? sourceFiles.length
+    : fallbackFilename
+      ? 1
+      : 0;
+  return `Connected (${count})`;
+}
+
+function sourceTitle(sourceFiles, fallbackFilename) {
+  const names = Array.isArray(sourceFiles)
+    ? sourceFiles.map((file) => file.filename).filter(Boolean)
+    : [];
+  return names.length > 0 ? names.join('\n') : fallbackFilename || 'No connected source files';
+}
+
+function SemrushOnlyOverview({ analyzed, filename, uploadedAt, sourceFiles }) {
   const kw = runKeywordAnalysis(analyzed);
   const latest = kw.trend.national[kw.trend.national.length - 1];
   const syncedLabel = uploadedAt
@@ -164,10 +180,15 @@ function SemrushOnlyOverview({ analyzed, filename, uploadedAt }) {
         subtitle="Semrush snapshot — upload a GA4 Excel report to unlock the full executive dashboard."
         meta={
           filename ? (
-            <div className="page-meta__stamp">
+            <Link
+              to="/upload"
+              className="page-meta__stamp"
+              title={sourceTitle(sourceFiles, filename)}
+              aria-label="Open Upload / Replace Data for connected source files"
+            >
               Source
-              <strong>{filename}</strong>
-            </div>
+              <strong>{sourceCountLabel(sourceFiles, filename)}</strong>
+            </Link>
           ) : null
         }
       />
@@ -196,7 +217,7 @@ function SemrushOnlyOverview({ analyzed, filename, uploadedAt }) {
         />
       </div>
 
-      <div className="empty-state">
+      <div className="empty-state semrush-overview-cta">
         <h2 className="empty-state__title">Want the full Overview?</h2>
         <p className="empty-state__body">
           The full executive dashboard (sessions, bounce rate, trust score,
@@ -217,7 +238,7 @@ function SemrushOnlyOverview({ analyzed, filename, uploadedAt }) {
 }
 
 export function ExecutiveSummary() {
-  const { hasData, hasGA4, analyzed, filename, uploadedAt } = useData();
+  const { hasData, hasGA4, analyzed, filename, uploadedAt, sourceFiles } = useData();
   if (!hasData || !analyzed) return <EmptyState />;
 
   // Semrush-only fall-through: render a keyword-focused Overview rather
@@ -228,6 +249,7 @@ export function ExecutiveSummary() {
         analyzed={analyzed}
         filename={filename}
         uploadedAt={uploadedAt}
+        sourceFiles={sourceFiles}
       />
     );
   }
@@ -294,10 +316,15 @@ export function ExecutiveSummary() {
         subtitle={`Year-end performance snapshot — ${summary.report_period || 'full period'}.`}
         meta={
           filename ? (
-            <div className="page-meta__stamp">
+            <Link
+              to="/upload"
+              className="page-meta__stamp"
+              title={sourceTitle(sourceFiles, filename)}
+              aria-label="Open Upload / Replace Data for connected source files"
+            >
               Source
-              <strong>{filename}</strong>
-            </div>
+              <strong>{sourceCountLabel(sourceFiles, filename)}</strong>
+            </Link>
           ) : null
         }
       />

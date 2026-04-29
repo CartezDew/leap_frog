@@ -14,6 +14,7 @@ import {
   LuShieldAlert,
   LuUpload,
   LuSearch,
+  LuBot,
 } from 'react-icons/lu';
 
 import { useData } from '../../context/DataContext.jsx';
@@ -26,6 +27,7 @@ const NAV_ITEMS = [
   { to: '/overview',  label: 'Overview',                 icon: LuLayoutDashboard, requires: 'summary',  needs: 'either'  },
   { to: '/insights',  label: 'Actionable Insights',      icon: LuLightbulb,       requires: 'insights', needs: 'ga4'     },
   { to: '/keywords',  label: 'Keywords (Semrush)',       icon: LuSearch,          requires: 'keywords', needs: 'semrush' },
+  { to: '/seo-aeo',   label: 'SEO / AEO Crawl',          icon: LuBot,             requires: 'seoAeo',   needs: 'semrush' },
   { to: '/bounce',    label: 'Bounce Rate',              icon: LuTrendingDown,    requires: 'bounce',   needs: 'ga4'     },
   { to: '/users',     label: 'User ID Engagement',       icon: LuUsers,           requires: 'users',    needs: 'ga4'     },
   { to: '/sources',   label: 'Traffic Sources',          icon: LuRadio,           requires: 'sources',  needs: 'ga4'     },
@@ -73,6 +75,8 @@ function sectionHasData(analyzed, key) {
         analyzed.bots?.cities?.length || analyzed.bots?.sources?.length,
       );
     case 'keywords':
+      return true;
+    case 'seoAeo':
       return true;
     default:
       return true;

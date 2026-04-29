@@ -137,7 +137,7 @@ const CTR_BY_POSITION = {
   10: 0.015,
 };
 
-function ctrFor(position) {
+export function ctrFor(position) {
   if (position == null) return 0;
   if (position <= 10) return CTR_BY_POSITION[position] || 0.015;
   if (position <= 20) return 0.008;

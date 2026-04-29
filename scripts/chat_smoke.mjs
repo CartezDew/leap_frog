@@ -25,9 +25,90 @@ const { parsed, analysisSheets, rawTotals } = parseWorkbookBuffer(
 const analyzed = runAllAnalysis(parsed, { rawTotals, analysisSheets });
 
 const QUESTIONS = [
+  // Baseline / capabilities
   'Hi',
   'What can you do?',
   'Give me a high-level summary',
+
+  // Category 1: KPI definitions and methodology
+  'What is GA4?',
+  'What is bounce rate and how is it calculated?',
+  'What is the difference between sessions and users?',
+  'What does engaged session mean in GA4?',
+  'What does the .2 suffix on a user ID mean?',
+  'What is a Google Signals ID (.17)?',
+
+  // Category 2: data quality and bot traffic
+  'How much of our traffic is bots?',
+  'Why is Lanzhou, China showing up in our data?',
+  'What is the JBCF Zfzcfefuvc source?',
+  'Which cities should we filter out?',
+  'What is the real bounce rate after removing bot traffic?',
+  'How do we set up GA4 filters to remove bots?',
+
+  // Category 3: assignment objectives
+  'What is our current homepage bounce rate?',
+  'How many total users did we have in 2025?',
+  'How many users visited the cybersecurity page?',
+  'How many contact form submissions did we get?',
+  'What is the 50% conversion increase target?',
+  'Can we hit the 20% bounce rate reduction?',
+  'Which recommendation has the biggest impact?',
+
+  // Category 4: channels and sources
+  'Which traffic channel has the best engagement?',
+  'Why does LinkedIn have a 70% bounce rate?',
+  'How does organic compare to direct traffic?',
+  'What is our email channel performance?',
+  'How many sessions came from ChatGPT?',
+  'What is Clutch.co and why does it have the best bounce rate?',
+  'What percentage of traffic comes from mobile vs desktop?',
+
+  // Category 5: pages and content
+  'What are our top 10 pages by traffic?',
+  'Which pages have the lowest bounce rates?',
+  'Which pages should we add CTAs to?',
+  'How does the CEO page perform compared to other leadership pages?',
+  'Which blog posts have the highest bounce rates?',
+  'How does the methodology page perform?',
+
+  // Category 6: users and engagement
+  'How many real human users visited the site?',
+  'Who is user 30555264.17 and why do they matter?',
+  'How many high-engagement users do we have?',
+  'What does a typical buyer journey look like in our data?',
+  'How many users visited for more than 3 months?',
+  'What are the user personas and how are they assigned?',
+
+  // Category 7: contacts and conversions
+  'How many contact form submissions were genuine leads?',
+  'How many were spam?',
+  'What types of inquiries are we getting?',
+  'Which months had the most contact form activity?',
+  'What percentage of total sessions reach the contact page?',
+  'What should we change about the contact form?',
+
+  // Category 8: competitive and strategic
+  'How does our bounce rate compare to B2B industry benchmarks?',
+  'What trust signals are we missing above the fold?',
+  'What is the manufacturing opportunity?',
+  'What is the three-horizon expansion strategy?',
+  'What should we prioritize first — SEO, LinkedIn, or email?',
+  'How do I explain this dashboard to a client?',
+
+  // Category 9: dashboard how-to
+  'How do I upload a new data file?',
+  'What file format does the dashboard accept?',
+  'Why is a section grayed out?',
+  'What does the validation report mean?',
+  'How do I clear the data and start over?',
+  'What date range does this data cover?',
+  'Can I upload multiple files at once?',
+
+  // Surprise prompt
+  'Tell me something I don’t know',
+
+  // Legacy representative questions
   'How many sessions did we have?',
   'How many new users?',
   'What is my bounce rate?',

@@ -251,35 +251,52 @@ button {
   }
 }
 
+.semrush-overview-cta {
+  margin-top: 28px;
+}
+
 /* ===== Page header (hero) =============================================== */
 
 .page-header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 24px;
   margin-bottom: 32px;
   padding-bottom: 28px;
   border-bottom: 1px solid var(--border-light);
 }
 
 .page-header__lead {
-  flex: 1;
   min-width: 0;
+}
+
+.page-header__eyebrow-row {
+  min-width: 0;
+  margin-bottom: 16px;
+}
+
+.page-header__eyebrow-row--has-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 25%);
+  align-items: start;
+  gap: 24px;
 }
 
 @media (max-width: 720px) {
   .page-header {
     margin-bottom: 24px;
     padding-bottom: 20px;
-    gap: 16px;
+  }
+
+  .page-header__eyebrow-row--has-meta {
+    grid-template-columns: 1fr;
+    gap: 12px;
   }
 }
 
 .page-badge {
   display: inline-flex;
   align-items: center;
+  justify-self: start;
+  width: fit-content;
+  max-width: 100%;
   gap: 8px;
   padding: 5px 12px 5px 10px;
   border-radius: 100px;
@@ -289,7 +306,6 @@ button {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  margin-bottom: 16px;
   border: 1px solid rgba(82, 46, 145, 0.12);
 }
 
@@ -334,7 +350,7 @@ button {
   line-height: 1.05;
   letter-spacing: -0.015em;
   color: var(--text-dark);
-  margin: 0 0 12px;
+  margin: 0;
   overflow-wrap: anywhere;
 }
 
@@ -348,7 +364,7 @@ button {
 .page-subtitle {
   font-size: 15px;
   color: var(--text-muted);
-  margin: 0;
+  margin: 12px 0 0;
   max-width: 720px;
   line-height: 1.55;
 }
@@ -356,26 +372,45 @@ button {
 .page-meta {
   display: flex;
   gap: 12px;
-  align-items: center;
-  flex-shrink: 0;
+  align-items: flex-start;
+  justify-content: flex-end;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .page-meta__stamp {
-  font-size: 11px;
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  opacity: 0.72;
+  font-size: 10px;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   text-align: right;
+  text-decoration: none;
+}
+
+a.page-meta__stamp:hover,
+a.page-meta__stamp:focus-visible {
+  opacity: 1;
+  color: var(--brand-purple);
+  text-decoration: none;
 }
 
 .page-meta__stamp strong {
   display: block;
-  font-size: 13px;
+  min-width: 0;
+  max-width: 100%;
+  font-size: 12px;
   color: var(--text-dark);
   font-weight: 600;
   text-transform: none;
   letter-spacing: 0;
   margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Optional stats bar that lives under a hero */
@@ -5993,30 +6028,37 @@ a.story-card,
 
 .frog-chat__launcher {
   position: fixed;
-  bottom: 22px;
+  bottom: 18px;
   /* Align with the centered --layout-max column (see :root --layout-gutter). */
-  right: calc(22px + var(--layout-gutter));
+  right: calc(18px + var(--layout-gutter));
   z-index: 200;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 5px 18px 5px 5px;
+  gap: 6px;
+  padding: 4px 14px 4px 4px;
   border: 1px solid rgba(154, 202, 60, 0.45);
   background: linear-gradient(135deg, var(--brand-purple) 0%, var(--brand-purple-dark) 100%);
   color: var(--text-white);
   border-radius: 999px;
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.01em;
   cursor: pointer;
+  opacity: 0.76;
   box-shadow:
-    0 12px 32px rgba(82, 46, 145, 0.35),
-    0 0 0 4px rgba(154, 202, 60, 0.12);
-  transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+    0 8px 22px rgba(82, 46, 145, 0.22),
+    0 0 0 3px rgba(154, 202, 60, 0.08);
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    background 160ms ease;
 }
 
-.frog-chat__launcher:hover {
+.frog-chat__launcher:hover,
+.frog-chat__launcher:focus-visible {
+  opacity: 1;
   transform: translateY(-2px);
   box-shadow:
     0 18px 40px rgba(82, 46, 145, 0.45),
@@ -6028,13 +6070,14 @@ a.story-card,
   height: 46px;
   padding: 0;
   justify-content: center;
+  opacity: 1;
 }
 
 .frog-chat__launcher-img {
   /* bus-frog.webp is ~5:3 — match aspect so contain fills frame (no stretch) */
-  width: 52px;
-  height: 31px;
-  border-radius: 12px;
+  width: 44px;
+  height: 26px;
+  border-radius: 10px;
   background: transparent;
   object-fit: contain;
   object-position: center;
@@ -6575,6 +6618,15 @@ a.story-card,
   gap: 16px;
 }
 
+.about-bullets--compact {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.about-bullets--steps {
+  grid-template-columns: 1fr;
+  counter-reset: help-step;
+}
+
 .about-bullet {
   display: flex;
   gap: 14px;
@@ -6621,6 +6673,76 @@ a.story-card,
   font-size: 13px;
   color: var(--text-muted);
   line-height: 1.55;
+}
+
+.about-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: -8px 0 28px;
+  padding: 14px 16px;
+  border: 1px solid rgba(82, 46, 145, 0.18);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(135deg, rgba(82, 46, 145, 0.08), rgba(154, 202, 60, 0.08)),
+    var(--bg-card);
+  color: var(--brand-purple);
+  box-shadow: var(--shadow-card);
+}
+
+.about-callout p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-body);
+}
+
+.about-callout strong {
+  color: var(--text-dark);
+}
+
+.about-guide-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin: 18px 0 28px;
+}
+
+.about-guide-card {
+  position: relative;
+  overflow: hidden;
+  padding: 18px 20px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-card);
+}
+
+.about-guide-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  background: var(--gradient-purple-green);
+}
+
+.about-guide-card > svg {
+  color: var(--brand-purple);
+  margin-bottom: 10px;
+}
+
+.about-guide-card h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-dark);
+}
+
+.about-guide-card p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-muted);
 }
 
 /* ===== Growth Levers page =============================================== */
@@ -7817,6 +7939,35 @@ a.story-card,
   --bot-alert-accent-soft: rgba(217, 119, 6, 0.1);
   --bot-alert-border: rgba(217, 119, 6, 0.22);
   --bot-alert-bg: rgba(255, 251, 235, 0.85);
+  margin: -4px 0 14px;
+  border-left-width: 2px;
+  border-radius: 9px;
+  box-shadow: none;
+}
+
+.bot-alert--subtle .bot-alert__bar {
+  gap: 8px;
+  padding: 6px 10px;
+}
+
+.bot-alert--subtle .bot-alert__icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+}
+
+.bot-alert--subtle .bot-alert__message {
+  font-size: 12.5px;
+}
+
+.bot-alert--subtle .bot-alert__toggle {
+  padding: 3px 9px;
+  font-size: 10.5px;
+  background: rgba(255, 255, 255, 0.4);
+}
+
+.bot-alert--subtle .bot-alert__detail {
+  padding: 10px 12px 12px;
 }
 
 .bot-alert__bar {

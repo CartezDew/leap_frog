@@ -25,6 +25,7 @@ import {
   parseFromUploadData,
   analyzeBatch,
 } from '../lib/sheetReader.js';
+import { crawlLeapfrogSite } from '../lib/siteCrawler.js';
 import { fetchUploadDataManifest } from '../lib/uploadDataLibrary.js';
 import { MAX_UPLOAD_BYTES, STORAGE_KEY } from '../lib/skillConfig.js';
 
@@ -75,6 +76,8 @@ export function DataProvider({ children }) {
   const [dataset, setDataset] = useState(null);
   const [hydrated, setHydrated] = useState(false);
   const [analyzeStatus, setAnalyzeStatus] = useState('idle'); // idle | analyzing | ready | error
+  const [siteCrawlStatus, setSiteCrawlStatus] = useState('idle'); // idle | crawling | ready | error
+  const [siteCrawlError, setSiteCrawlError] = useState(null);
   const [error, setError] = useState(null);
   const [manifest, setManifest] = useState([]);
   const [manifestLoading, setManifestLoading] = useState(false);
@@ -273,11 +276,37 @@ export function DataProvider({ children }) {
     }
   }, []);
 
+  const runSiteCrawl = useCallback(async (options = {}) => {
+    setSiteCrawlError(null);
+    setSiteCrawlStatus('crawling');
+    try {
+      const result = await crawlLeapfrogSite(options);
+      setDataset((prev) => {
+        const next = {
+          ...(prev || {}),
+          siteCrawl: result,
+          siteCrawlUpdatedAt: new Date().toISOString(),
+        };
+        writeToStorage(next);
+        return next;
+      });
+      setSiteCrawlStatus('ready');
+      return result;
+    } catch (err) {
+      console.error('Failed to crawl Leapfrog site', err);
+      setSiteCrawlError(err.message || 'Site crawl failed.');
+      setSiteCrawlStatus('error');
+      throw err;
+    }
+  }, []);
+
   const clear = useCallback(() => {
     clearStorage();
     setDataset(null);
     setStaged([]);
     setAnalyzeStatus('idle');
+    setSiteCrawlStatus('idle');
+    setSiteCrawlError(null);
     setError(null);
   }, []);
 
@@ -326,6 +355,8 @@ export function DataProvider({ children }) {
       analysisSheets: dataset?.analysisSheets || {},
       report: dataset?.report || null,
       metadata: dataset?.metadata || null,
+      siteCrawl: dataset?.siteCrawl || null,
+      siteCrawlUpdatedAt: dataset?.siteCrawlUpdatedAt || null,
       filename: dataset?.filename || '',
       filenameLabel: dataset?.filenameLabel || dataset?.filename || '',
       sourceFiles,
@@ -338,6 +369,8 @@ export function DataProvider({ children }) {
       kinds,
       hydrated,
       analyzeStatus,
+      siteCrawlStatus,
+      siteCrawlError,
       error,
       // staging
       staged,
@@ -350,6 +383,7 @@ export function DataProvider({ children }) {
       removeFromStage,
       clearStage,
       runBatch,
+      runSiteCrawl,
       // dataset actions
       clear,
       // upload data folder manifest
@@ -364,6 +398,8 @@ export function DataProvider({ children }) {
       kinds,
       hydrated,
       analyzeStatus,
+      siteCrawlStatus,
+      siteCrawlError,
       error,
       staged,
       stagedTotalBytes,
@@ -374,6 +410,7 @@ export function DataProvider({ children }) {
       removeFromStage,
       clearStage,
       runBatch,
+      runSiteCrawl,
       clear,
       manifest,
       manifestLoading,
