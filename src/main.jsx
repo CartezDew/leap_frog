@@ -6,6 +6,8 @@ import { App } from './App.jsx';
 import { DataProvider } from './context/DataContext.jsx';
 
 import './styles/global.css';
+import './styles/sidebar.css';
+import './styles/topbar.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

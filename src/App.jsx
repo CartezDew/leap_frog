@@ -3,11 +3,13 @@ import { useEffect } from 'react';
 
 import { Layout } from './components/Layout/Layout.jsx';
 import { useData } from './context/DataContext.jsx';
+import { About } from './pages/About.jsx';
 import { ActionableInsights } from './pages/ActionableInsights.jsx';
 import { BotTraffic } from './pages/BotTraffic.jsx';
 import { BounceRate } from './pages/BounceRate.jsx';
 import { ContactFormIntel } from './pages/ContactFormIntel.jsx';
 import { ExecutiveSummary } from './pages/ExecutiveSummary.jsx';
+import { Home } from './pages/Home.jsx';
 import { PagePathAnalysis } from './pages/PagePathAnalysis.jsx';
 import { TrafficSources } from './pages/TrafficSources.jsx';
 import { UnicornPages } from './pages/UnicornPages.jsx';
@@ -23,9 +25,9 @@ function ScrollToTop() {
 }
 
 function StartRedirect() {
-  const { hydrated, hasData } = useData();
+  const { hydrated } = useData();
   if (!hydrated) return null;
-  return hasData ? <Navigate to="/" replace /> : <Navigate to="/upload" replace />;
+  return <Navigate to="/" replace />;
 }
 
 export function App() {
@@ -34,7 +36,9 @@ export function App() {
       <ScrollToTop />
       <Routes>
         <Route element={<Layout />}>
-          <Route path="/" element={<ExecutiveSummary />} />
+          <Route path="/" element={<Home />} />
+          <Route path="/about" element={<About />} />
+          <Route path="/overview" element={<ExecutiveSummary />} />
           <Route path="/upload" element={<UploadPage />} />
           <Route path="/insights" element={<ActionableInsights />} />
           <Route path="/bounce" element={<BounceRate />} />

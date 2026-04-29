@@ -23,7 +23,11 @@ export function EmptyState({
         <Icon size={28} />
       </span>
       <h2 className="empty-state__title">{title}</h2>
-      <p className="empty-state__body">{body}</p>
+      {typeof body === 'string' ? (
+        <p className="empty-state__body">{body}</p>
+      ) : (
+        <div className="empty-state__body">{body}</div>
+      )}
       {cta && (
         <Link to={cta.to} className="btn btn--primary">
           {cta.label}

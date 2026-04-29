@@ -58,7 +58,7 @@ export function ExecutiveSummary() {
     <>
       <PageHeader
         badge={syncedLabel}
-        title="Executive Summary"
+        title="Overview"
         subtitle={`Year-end performance snapshot — ${summary.report_period || 'full period'}.`}
         meta={
           filename ? (

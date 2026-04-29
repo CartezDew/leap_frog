@@ -16,10 +16,9 @@ import {
 } from 'react-icons/lu';
 
 import { useData } from '../../context/DataContext.jsx';
-import mainLogo from '../../images/Main_Logo.webp';
 
 const NAV_ITEMS = [
-  { to: '/', label: 'Executive Summary', icon: LuLayoutDashboard, requires: 'summary' },
+  { to: '/overview', label: 'Overview', icon: LuLayoutDashboard, requires: 'summary' },
   { to: '/insights', label: 'Actionable Insights', icon: LuLightbulb, requires: 'insights' },
   { to: '/bounce', label: 'Bounce Rate', icon: LuTrendingDown, requires: 'bounce' },
   { to: '/users', label: 'User ID Engagement', icon: LuUsers, requires: 'users' },
@@ -90,100 +89,86 @@ export function Sidebar() {
       aria-label="Primary navigation"
       data-collapsed={collapsed ? 'true' : 'false'}
     >
-      <div className="sidebar__brand">
-        <div className="sidebar__brand-main">
-          <div className="sidebar__brand-mark">
-            <img
-              src={mainLogo}
-              alt="Leapfrog"
-              className="sidebar__brand-icon"
-            />
-          </div>
-          <div className="sidebar__brand-text">
-            <h1 className="sidebar__brand-title">
-              Analytics <em>Dashboard</em>
-            </h1>
-          </div>
-        </div>
-        <div className="sidebar__brand-meta">
-          <p className="sidebar__brand-eyebrow">Insight Engine Reports</p>
-          <div
-            className="sidebar__brand-sources"
-            aria-label="Report file types: GA4 and Semrush"
-          >
-            <span className="sidebar__brand-pill sidebar__brand-pill--ga4">
-              GA4 Report
-            </span>
-            <span className="sidebar__brand-pill sidebar__brand-pill--semrush">
-              Semrush Report
-            </span>
-          </div>
-        </div>
-        <p className="sidebar__brand-mini-title" aria-hidden="true">
-          Analytics
-          <em>Dashboard</em>
-        </p>
-      </div>
-
-      <nav className="sidebar__nav">
-        <div className="sidebar__nav-header">
-          <div className="sidebar__nav-section">Upload</div>
-          <button
-            type="button"
-            className="sidebar__toggle"
-            onClick={() => setCollapsed((c) => !c)}
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            aria-expanded={!collapsed}
-            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {collapsed ? (
-              <LuChevronRight size={14} />
-            ) : (
-              <LuChevronLeft size={14} />
-            )}
-          </button>
-        </div>
-        <NavLink
-          to="/upload"
-          className={({ isActive }) =>
-            `sidebar__nav-link${isActive ? ' is-active' : ''}`
-          }
-          title={collapsed ? uploadLabel : undefined}
-          aria-label={uploadLabel}
-        >
-          <span className="sidebar__nav-icon">
-            <LuUpload size={18} />
-          </span>
-          <span className="sidebar__nav-label">{uploadLabel}</span>
-        </NavLink>
-
-        <div className="sidebar__nav-section">Analysis</div>
-        {NAV_ITEMS.map((item) => {
-          const Icon = item.icon;
-          const enabled = hasData && sectionHasData(analyzed, item.requires);
-          return (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === '/'}
-              className={({ isActive }) =>
-                `sidebar__nav-link${isActive ? ' is-active' : ''}${
-                  enabled ? '' : ' is-disabled'
-                }`
-              }
-              aria-disabled={!enabled}
-              aria-label={item.label}
-              tabIndex={enabled ? 0 : -1}
-              title={collapsed ? item.label : undefined}
+      <div className="sidebar__top">
+        <div className="sidebar__brand">
+          <div className="sidebar__brand-meta">
+            <p className="sidebar__brand-eyebrow">Insight Engine Reports</p>
+            <div
+              className="sidebar__brand-sources"
+              aria-label="Report file types: GA4 and Semrush"
             >
-              <span className="sidebar__nav-icon">
-                <Icon size={18} />
+              <span className="sidebar__brand-pill sidebar__brand-pill--ga4">
+                GA4 Report
               </span>
-              <span className="sidebar__nav-label">{item.label}</span>
-            </NavLink>
-          );
-        })}
-      </nav>
+              <span className="sidebar__brand-pill sidebar__brand-pill--semrush">
+                Semrush Report
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="sidebar__divider" aria-hidden="true" />
+
+        <nav className="sidebar__nav">
+          <div className="sidebar__nav-header">
+            <div className="sidebar__nav-section">Upload</div>
+            <button
+              type="button"
+              className="sidebar__toggle"
+              onClick={() => setCollapsed((c) => !c)}
+              aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              aria-expanded={!collapsed}
+              title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              {collapsed ? (
+                <LuChevronRight size={14} />
+              ) : (
+                <LuChevronLeft size={14} />
+              )}
+            </button>
+          </div>
+          <NavLink
+            to="/upload"
+            className={({ isActive }) =>
+              `sidebar__nav-link${isActive ? ' is-active' : ''}`
+            }
+            title={collapsed ? uploadLabel : undefined}
+            aria-label={uploadLabel}
+          >
+            <span className="sidebar__nav-icon">
+              <LuUpload size={18} />
+            </span>
+            <span className="sidebar__nav-label">{uploadLabel}</span>
+          </NavLink>
+
+          <div className="sidebar__nav-section">Analysis</div>
+          {NAV_ITEMS.map((item) => {
+            const Icon = item.icon;
+            const enabled = hasData && sectionHasData(analyzed, item.requires);
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.to === '/'}
+                className={({ isActive }) =>
+                  `sidebar__nav-link${isActive ? ' is-active' : ''}${
+                    enabled ? '' : ' is-disabled'
+                  }`
+                }
+                aria-disabled={!enabled}
+                aria-label={item.label}
+                tabIndex={enabled ? 0 : -1}
+                title={collapsed ? item.label : undefined}
+              >
+                <span className="sidebar__nav-icon">
+                  <Icon size={18} />
+                </span>
+                <span className="sidebar__nav-label">{item.label}</span>
+              </NavLink>
+            );
+          })}
+        </nav>
+      </div>
 
       <div className="sidebar__footer">
         {hasData ? (

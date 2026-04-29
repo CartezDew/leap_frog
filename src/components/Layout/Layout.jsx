@@ -2,6 +2,7 @@ import { Outlet } from 'react-router-dom';
 
 import { AIChat } from '../AIChat/AIChat.jsx';
 import { Sidebar } from '../Sidebar/Sidebar.jsx';
+import { Topbar } from '../Topbar/Topbar.jsx';
 
 function AmbientOrbs() {
   return (
@@ -17,6 +18,7 @@ export function Layout() {
   return (
     <>
       <AmbientOrbs />
+      <Topbar />
       <div className="app-shell">
         <Sidebar />
         <div className="app-main">

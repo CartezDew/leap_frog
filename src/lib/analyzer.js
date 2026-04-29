@@ -335,6 +335,16 @@ function monthlyTotals(records) {
 // User aggregation
 // ---------------------------------------------------------------------------
 
+function parseMonthsList(value) {
+  if (value === null || value === undefined) return [];
+  const s = String(value).trim();
+  if (!s) return [];
+  return s
+    .split(/[,;|\/]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
 function aggregateUsers(records) {
   if (!records || records.length === 0) return [];
   const groups = groupBy(records, (r) => r.effective_user_id);
@@ -347,14 +357,51 @@ function aggregateUsers(records) {
     const totalViews = sumKey(rows, 'views');
     const totalEvents = sumKey(rows, 'event_count');
     const totalNewUsers = sumKey(rows, 'new_users');
-    const monthsActive = new Set(
+
+    // Months active: prefer explicit month_num roll-up; if absent, accept a
+    // direct months_active column or count distinct entries from a months_list
+    // string ("April, August, July, ...").
+    const monthNums = new Set(
       rows.map((r) => r.month_num).filter((m) => m !== null && m !== undefined),
-    ).size;
+    );
+    let monthsActive = monthNums.size;
+    if (monthsActive === 0) {
+      const directMonths = Math.max(
+        0,
+        ...rows.map((r) => num(r.months_active)),
+      );
+      const listMonths = Math.max(
+        0,
+        ...rows.map((r) => parseMonthsList(r.months_list).length),
+      );
+      monthsActive = Math.max(directMonths, listMonths);
+    }
+
     const avgSessionDuration = meanKey(rows, 'avg_engagement_time');
     const avgViewsPerSession = meanKey(rows, 'views_per_session');
 
-    const engagementRate = safeDiv(totalEngaged, totalSessions, 0);
-    const bounceRate = calculateBounceRate(totalEngaged, totalSessions);
+    // Engagement rate: prefer derived engaged/sessions; fall back to a direct
+    // engagement_rate column on the row if engaged_sessions wasn't provided.
+    let engagementRate = safeDiv(totalEngaged, totalSessions, 0);
+    if (engagementRate === 0) {
+      const directRate = Math.max(
+        0,
+        ...rows.map((r) => num(r.engagement_rate)),
+      );
+      if (directRate > 0 && directRate <= 1) engagementRate = directRate;
+    }
+
+    // Bounce rate: derive from engagement when possible, else accept the
+    // workbook's own bounce_rate_raw column.
+    let bounceRate = calculateBounceRate(totalEngaged, totalSessions);
+    if (totalEngaged === 0) {
+      const directBounce = Math.max(
+        0,
+        ...rows.map((r) => num(r.bounce_rate_raw)),
+      );
+      if (directBounce > 0 && directBounce <= 1) bounceRate = directBounce;
+    }
+
     const eventsPerSession = safeDiv(totalEvents, totalSessions, 0);
 
     const record = {
@@ -372,7 +419,11 @@ function aggregateUsers(records) {
       bounce_rate: bounceRate,
       events_per_session: eventsPerSession,
     };
-    record.id_type = classifyUserId(record.user_id);
+    // Prefer an explicit User Type column from the source data if present.
+    const sourceIdType = rows
+      .map((r) => (r.id_type ? String(r.id_type).trim() : ''))
+      .find((v) => v && v.length > 0);
+    record.id_type = sourceIdType || classifyUserId(record.user_id);
     const score = userBotScore(record);
     record.bot_score = score;
     record.bot_classification = classifyBotScore(score);

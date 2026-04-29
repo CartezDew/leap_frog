@@ -1,0 +1,222 @@
+/* Top navigation bar — depends on design tokens in global.css (:root). */
+/* Fixed across the very top of the viewport. Sits above the sidebar
+   (z-index 100) and any page content. The sidebar and main content are
+   pushed down by --topbar-height via padding on .app-shell. */
+
+.topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: auto;
+  height: var(--topbar-height);
+  background:
+    radial-gradient(
+      ellipse at top left,
+      rgba(139, 92, 246, 0.15) 0%,
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse at bottom right,
+      rgba(154, 202, 60, 0.08) 0%,
+      transparent 60%
+    ),
+    var(--brand-purple-dark);
+  color: var(--text-white);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  z-index: 200;
+  box-shadow: 0 6px 24px rgba(20, 16, 30, 0.18);
+}
+
+@media (min-width: 1400px) {
+  .topbar {
+    left: var(--layout-gutter);
+    right: auto;
+    width: var(--layout-max);
+    max-width: min(100vw, var(--layout-max));
+  }
+}
+
+.topbar__inner {
+  position: relative;
+  height: 100%;
+  max-width: 100%;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.topbar__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+  color: var(--text-white);
+  font-family: var(--font-display);
+  font-size: 22px;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.topbar__brand:hover {
+  text-decoration: none;
+  color: var(--text-white);
+}
+
+.topbar__logo {
+  width: 50px;
+  height: 50px;
+  filter:
+    drop-shadow(0 4px 10px rgba(0, 0, 0, 0.45))
+    drop-shadow(0 0 14px rgba(154, 202, 60, 0.25));
+}
+
+.topbar__brand-text {
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.topbar__brand-text em {
+  font-style: italic;
+  color: var(--brand-green);
+  text-shadow: 0 0 18px rgba(154, 202, 60, 0.35);
+}
+
+.topbar__nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.topbar__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  border: 1px solid transparent;
+  transition: background 0.15s ease, color 0.15s ease,
+    border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.topbar__link:hover {
+  color: var(--text-white);
+  background: rgba(255, 255, 255, 0.08);
+  text-decoration: none;
+}
+
+.topbar__link.is-active {
+  background: rgba(154, 202, 60, 0.16);
+  color: var(--brand-green);
+  border-color: rgba(154, 202, 60, 0.32);
+}
+
+.topbar__link-icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+.topbar__link-label {
+  display: inline-block;
+}
+
+.topbar__link--cta,
+.topbar__link--cta.is-active {
+  background: var(--gradient-green);
+  color: var(--text-dark);
+  border-color: transparent;
+  box-shadow: 0 4px 14px rgba(154, 202, 60, 0.32);
+}
+
+.topbar__link--cta:hover {
+  color: var(--text-dark);
+  background: var(--gradient-green);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(154, 202, 60, 0.42);
+}
+
+.topbar__hamburger {
+  display: none;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-white);
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.topbar__hamburger:hover {
+  border-color: rgba(154, 202, 60, 0.6);
+  color: var(--brand-green);
+  background: rgba(154, 202, 60, 0.1);
+}
+
+.topbar__hamburger:focus-visible {
+  outline: 2px solid var(--brand-green);
+  outline-offset: 2px;
+}
+
+/* Push the main layout below the fixed topbar. */
+.app-shell {
+  padding-top: var(--topbar-height);
+}
+
+@media (max-width: 580px) {
+  .topbar__inner {
+    padding: 0 16px;
+  }
+
+  .topbar__brand-text {
+    font-size: 16px;
+  }
+
+  .topbar__hamburger {
+    display: inline-flex;
+  }
+
+  .topbar__nav {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    padding: 10px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-elevated);
+    transform-origin: top right;
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+    pointer-events: none;
+    transition: opacity 0.16s ease, transform 0.16s ease;
+  }
+
+  .topbar__nav--open {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+  }
+
+  .topbar__link {
+    justify-content: flex-start;
+    padding: 12px 14px;
+    border-radius: var(--radius-md);
+    font-size: 14px;
+  }
+}

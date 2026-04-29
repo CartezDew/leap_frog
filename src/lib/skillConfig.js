@@ -22,6 +22,9 @@ export const METRIC_ALIASES = {
     'bouncerate',
     'bounce rate %',
     'bounce rate pct',
+    'avg bounce',
+    'average bounce',
+    'avg bounce rate',
   ],
   event_count: ['event count', 'events', 'total events', 'event total'],
   avg_engagement_time: [
@@ -31,6 +34,9 @@ export const METRIC_ALIASES = {
     'avg session duration',
     'engagement time',
     'session duration',
+    'avg duration',
+    'average duration',
+    'avg session time',
   ],
   views: [
     'views',
@@ -38,7 +44,22 @@ export const METRIC_ALIASES = {
     'pageviews',
     'page views',
     'screen page views',
+    'total views',
   ],
+  engagement_rate: [
+    'engagement rate',
+    'engagement',
+    'engagement %',
+    'engagement pct',
+  ],
+  months_active: [
+    'months active',
+    'active months',
+    'month count',
+    'unique months',
+  ],
+  months_list: ['months list', 'month list', 'months'],
+  id_type: ['user type', 'id type', 'persona type'],
   views_per_session: [
     'views per session',
     'pages per session',

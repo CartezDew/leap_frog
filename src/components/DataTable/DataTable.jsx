@@ -23,6 +23,7 @@ export function DataTable({
       {!rows || rows.length === 0 ? (
         <div className="table-empty">{emptyMessage}</div>
       ) : (
+        <div className="table-scroll">
         <table className="table">
           <thead>
             <tr>
@@ -64,6 +65,7 @@ export function DataTable({
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );

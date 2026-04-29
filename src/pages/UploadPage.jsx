@@ -97,7 +97,7 @@ export function UploadPage() {
               <button
                 type="button"
                 className="btn btn--primary"
-                onClick={() => navigate('/')}
+                onClick={() => navigate('/overview')}
               >
                 Open Dashboard <LuArrowRight size={14} />
               </button>

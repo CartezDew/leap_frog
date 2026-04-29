@@ -212,10 +212,67 @@ export function UserEngagement() {
   const multiMonth = users.filter((u) => u.is_multi_month).slice(0, 50);
 
   if (users.length === 0) {
+    const meta = analyzed?.metadata || {};
+    const classifications = meta.classifications || {};
+    const sheetsByCategory = Object.entries(classifications).reduce(
+      (acc, [name, cat]) => {
+        acc[cat] = acc[cat] || [];
+        acc[cat].push(name);
+        return acc;
+      },
+      {},
+    );
+    const userSheets = sheetsByCategory.user || [];
+    const analysisSheets = sheetsByCategory.analysis || [];
+    const userWarnings = (meta.warnings || []).filter((w) =>
+      /user/i.test(w),
+    );
+
+    const diag = (
+      <>
+        <p>
+          Upload a workbook that includes a User sheet with at minimum{' '}
+          <strong>User ID</strong> and <strong>Sessions</strong>. Optional but
+          recommended: <em>Engaged Sessions</em> or <em>Engagement Rate</em>,{' '}
+          <em>Months Active</em> / <em>Months List</em> / <em>Month</em>,{' '}
+          <em>Avg Duration</em>, <em>Total Views</em>, <em>Total Events</em>.
+        </p>
+        {(userSheets.length > 0 || analysisSheets.length > 0) && (
+          <ul className="empty-state__diag">
+            {userSheets.length > 0 && (
+              <li>
+                <strong>Detected user sheets:</strong> {userSheets.join(', ')}
+              </li>
+            )}
+            {analysisSheets.length > 0 && (
+              <li>
+                <strong>Treated as analysis tabs (passed through):</strong>{' '}
+                {analysisSheets.join(', ')}
+              </li>
+            )}
+            {userWarnings.length > 0 && (
+              <li>
+                <strong>Parser notes:</strong>
+                <ul>
+                  {userWarnings.slice(0, 4).map((w, i) => (
+                    <li key={i}>{w}</li>
+                  ))}
+                </ul>
+              </li>
+            )}
+          </ul>
+        )}
+      </>
+    );
+
     return (
       <EmptyState
-        title="No User sheet detected"
-        body="Upload a workbook that includes a User sheet (Effective User ID + Sessions + Engaged sessions) to populate this view."
+        title={
+          userSheets.length > 0
+            ? 'User sheet detected but no rows extracted'
+            : 'No User sheet detected'
+        }
+        body={diag}
       />
     );
   }

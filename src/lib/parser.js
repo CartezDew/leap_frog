@@ -156,9 +156,14 @@ function classifyByHeaders(grid) {
 }
 
 export function classifySheet(sheetName, grid) {
-  if (isAnalysisSheet(grid)) return 'analysis';
+  // Prefer name-based classification: if the sheet name clearly identifies it
+  // as a raw data category (e.g. "User ID Engagement"), use that even if row 0
+  // contains a banner/title cell that would otherwise look like a curated
+  // analysis sheet. Curated analysis tabs the user wants passed through tend
+  // to use names that don't match these categories.
   const byName = classifyByName(sheetName);
   if (byName) return byName;
+  if (isAnalysisSheet(grid)) return 'analysis';
   const byHeaders = classifyByHeaders(grid);
   if (byHeaders) return byHeaders;
   return 'unrecognized';
@@ -477,14 +482,14 @@ export function reshapeWideToLong(grid, idColumnName) {
 // Flat-format detection & reading (SKILL.md 12.6)
 // ---------------------------------------------------------------------------
 
-function gridToObjects(grid) {
+function gridToObjects(grid, { headerRow = 0 } = {}) {
   const [rows] = shape(grid);
   if (rows < 1) return { headers: [], records: [] };
-  const headers = rowAt(grid, 0).map((h) =>
+  const headers = rowAt(grid, headerRow).map((h) =>
     isBlank(h) ? '' : String(h).trim(),
   );
   const records = [];
-  for (let i = 1; i < rows; i += 1) {
+  for (let i = headerRow + 1; i < rows; i += 1) {
     const row = rowAt(grid, i);
     if (row.every(isBlank)) continue;
     const obj = {};
@@ -494,6 +499,32 @@ function gridToObjects(grid) {
     records.push(obj);
   }
   return { headers, records };
+}
+
+// Some hand-curated tabs (e.g. "USER ID ENGAGEMENT ANALYSIS | …") put a banner
+// title in row 0 and a summary band in subsequent rows before the actual table
+// header row. Walk the first ~12 rows looking for the row that has the most
+// recognized column tokens and return its index. Falls back to row 0.
+function findHeaderRow(grid, expectedTokens, lookahead = 12) {
+  const [rows] = shape(grid);
+  const limit = Math.min(rows, lookahead);
+  let bestIdx = 0;
+  let bestScore = -1;
+  for (let i = 0; i < limit; i += 1) {
+    const row = rowAt(grid, i).map((c) => normalizeHeader(c));
+    if (row.every((c) => c === '')) continue;
+    let score = 0;
+    for (const cell of row) {
+      if (!cell) continue;
+      if (matchMetric(cell)) score += 1;
+      if (expectedTokens.some((t) => cell === t || cell.includes(t))) score += 1;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestIdx = i;
+    }
+  }
+  return bestScore > 0 ? bestIdx : 0;
 }
 
 function detectFlatColumns(headers) {
@@ -549,11 +580,25 @@ function safeReadFlat(records, headers, columnMap, requiredColumns, optionalDefa
 }
 
 function readUserSheet(grid) {
-  const { headers, records } = gridToObjects(grid);
+  // Hand-curated user sheets often start with a title banner row + a summary
+  // band before the real header row (e.g. "USER ID ENGAGEMENT ANALYSIS | …").
+  // Detect the header row dynamically so we don't need a perfectly clean export.
+  const headerRow = findHeaderRow(grid, [
+    'user id',
+    'effective user id',
+    'sessions',
+    'total sessions',
+  ]);
+  const { headers, records } = gridToObjects(grid, { headerRow });
   const columnMap = detectFlatColumns(headers);
 
-  const required = ['effective_user_id', 'sessions', 'engaged_sessions'];
+  // engaged_sessions and Month are no longer strictly required: many real
+  // exports are pre-aggregated per user with engagement_rate / months_active
+  // / months_list instead. We back-fill engaged_sessions and months_active
+  // below so the analyzer always has something to work with.
+  const required = ['effective_user_id', 'sessions'];
   const optional = {
+    engaged_sessions: 0,
     new_users: 0,
     views: 0,
     views_per_session: 0,
@@ -561,6 +606,10 @@ function readUserSheet(grid) {
     avg_engagement_time: 0,
     event_count: 0,
     events_per_session: 0,
+    engagement_rate: 0,
+    months_active: 0,
+    months_list: '',
+    id_type: '',
     stream_name: '',
   };
 
@@ -576,7 +625,6 @@ function readUserSheet(grid) {
   }
 
   if (!monthCol) {
-    flat.warnings.push("REQUIRED COLUMN MISSING: 'Month' in User sheet.");
     for (const r of flat.records) r.month_num = null;
   } else {
     for (const r of flat.records) {
@@ -588,6 +636,17 @@ function readUserSheet(grid) {
         monthNum = Math.round(raw);
       }
       r.month_num = monthNum;
+    }
+  }
+
+  // Back-fill engaged_sessions when only an engagement_rate column was given.
+  // This is common in pre-aggregated user-level GA4 exports.
+  for (const r of flat.records) {
+    const sessions = safeNumber(r.sessions);
+    const engaged = safeNumber(r.engaged_sessions);
+    const rate = safeNumber(r.engagement_rate);
+    if (engaged === 0 && sessions > 0 && rate > 0 && rate <= 1) {
+      r.engaged_sessions = Math.round(sessions * rate);
     }
   }
 
