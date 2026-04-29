@@ -6,7 +6,7 @@
 //
 // Build:
 //   - Emits the manifest as dist/__upload_data_manifest.json
-//   - Copies every .xlsx / .xls into dist/Upload DATA/<name>
+//   - Copies every .xlsx / .xls / .pdf into dist/Upload DATA/<name>
 //
 // The frontend treats the manifest URL identically in dev and prod.
 
@@ -17,6 +17,10 @@ const FOLDER = 'Upload DATA';
 const MANIFEST_PATH = '/__upload_data_manifest.json';
 const FILE_PREFIX = `/${FOLDER}/`;
 const ALLOWED_EXT = /\.(xlsx|xls|pdf)$/i;
+const SYNTHETIC_GA4_SAMPLE = {
+  name: 'leapfrog-2025-synthetic.xlsx',
+  source: path.join('sample-data', 'synthetic_ga4.xlsx'),
+};
 
 const CONTENT_TYPES = {
   '.xlsx':
@@ -30,24 +34,65 @@ function contentTypeFor(filename) {
   return CONTENT_TYPES[ext] || 'application/octet-stream';
 }
 
+function toManifestEntry(file) {
+  const { sourceFull, ...publicEntry } = file;
+  return publicEntry;
+}
+
 function listFiles(rootDir) {
   const dir = path.resolve(rootDir, FOLDER);
-  if (!fs.existsSync(dir)) return [];
-  return fs
-    .readdirSync(dir)
-    .filter((name) => ALLOWED_EXT.test(name) && !name.startsWith('.'))
-    .map((name) => {
-      const full = path.join(dir, name);
-      const stat = fs.statSync(full);
-      return {
-        name,
-        url: `${FILE_PREFIX}${encodeURIComponent(name)}`,
-        size: stat.size,
-        modified: stat.mtimeMs,
-        modified_iso: new Date(stat.mtimeMs).toISOString(),
-      };
-    })
-    .sort((a, b) => b.modified - a.modified);
+  const files = fs.existsSync(dir)
+    ? fs
+      .readdirSync(dir)
+      .filter((name) => ALLOWED_EXT.test(name) && !name.startsWith('.'))
+      .map((name) => {
+        const full = path.join(dir, name);
+        const stat = fs.statSync(full);
+        return {
+          name,
+          url: `${FILE_PREFIX}${encodeURIComponent(name)}`,
+          size: stat.size,
+          modified: stat.mtimeMs,
+          modified_iso: new Date(stat.mtimeMs).toISOString(),
+          sourceFull: full,
+        };
+      })
+    : [];
+
+  const sampleFull = path.resolve(rootDir, SYNTHETIC_GA4_SAMPLE.source);
+  const hasSyntheticWorkbook = files.some(
+    (file) => file.name === SYNTHETIC_GA4_SAMPLE.name,
+  );
+
+  if (!hasSyntheticWorkbook && fs.existsSync(sampleFull)) {
+    const stat = fs.statSync(sampleFull);
+    files.push({
+      name: SYNTHETIC_GA4_SAMPLE.name,
+      url: `${FILE_PREFIX}${encodeURIComponent(SYNTHETIC_GA4_SAMPLE.name)}`,
+      size: stat.size,
+      modified: stat.mtimeMs,
+      modified_iso: new Date(stat.mtimeMs).toISOString(),
+      sourceFull: sampleFull,
+    });
+  }
+
+  return files.sort((a, b) => b.modified - a.modified);
+}
+
+function findUploadDataFile(rootDir, filename) {
+  const uploadFull = path.resolve(rootDir, FOLDER, filename);
+  if (fs.existsSync(uploadFull)) return uploadFull;
+
+  if (filename === SYNTHETIC_GA4_SAMPLE.name) {
+    const sampleFull = path.resolve(rootDir, SYNTHETIC_GA4_SAMPLE.source);
+    if (fs.existsSync(sampleFull)) return sampleFull;
+  }
+
+  return null;
+}
+
+function listManifestFiles(rootDir) {
+  return listFiles(rootDir).map(toManifestEntry);
 }
 
 export function uploadDataPlugin() {
@@ -67,7 +112,7 @@ export function uploadDataPlugin() {
         if (url.startsWith(MANIFEST_PATH)) {
           res.setHeader('Content-Type', 'application/json; charset=utf-8');
           res.setHeader('Cache-Control', 'no-store');
-          res.end(JSON.stringify(listFiles(rootDir)));
+          res.end(JSON.stringify(listManifestFiles(rootDir)));
           return;
         }
 
@@ -84,8 +129,8 @@ export function uploadDataPlugin() {
             res.end('Unsupported file type');
             return;
           }
-          const file = path.resolve(rootDir, FOLDER, filename);
-          if (!fs.existsSync(file)) {
+          const file = findUploadDataFile(rootDir, filename);
+          if (!file) {
             res.statusCode = 404;
             res.end('Not found');
             return;
@@ -109,15 +154,14 @@ export function uploadDataPlugin() {
       this.emitFile({
         type: 'asset',
         fileName: '__upload_data_manifest.json',
-        source: JSON.stringify(files),
+        source: JSON.stringify(files.map(toManifestEntry)),
       });
       for (const file of files) {
-        const full = path.resolve(rootDir, FOLDER, file.name);
         try {
           this.emitFile({
             type: 'asset',
             fileName: `${FOLDER}/${file.name}`,
-            source: fs.readFileSync(full),
+            source: fs.readFileSync(file.sourceFull),
           });
         } catch (err) {
           this.warn(`Failed to bundle ${file.name}: ${err.message}`);
