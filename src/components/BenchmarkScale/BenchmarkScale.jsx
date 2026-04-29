@@ -53,7 +53,9 @@ function ChannelRow({ row }) {
       </div>
       <div className="bench-row__track" aria-hidden="true">
         <div className="bench-row__gradient" />
-        <span className={`bench-row__marker bench-row__marker--p-${pos}`} />
+        <span className={`bench-row__marker bench-row__marker--p-${pos}`}>
+          <span className="bench-row__status">{row.tier?.label}</span>
+        </span>
       </div>
     </li>
   );
