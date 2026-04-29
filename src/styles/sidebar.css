@@ -703,13 +703,11 @@
   }
 }
 
-/* Responsive: keep the sidebar anchored to the left as a slim icon rail on
-   phone-sized viewports. Stacking it above main pushed the report down; this
-   preserves the desktop "fixed on the left" flow while saving horizontal
-   space — the rail collapses to icons regardless of the user's toggle state. */
+/* Responsive: keep the sidebar anchored to the left on phone-sized viewports,
+   but still honor the user's expanded/collapsed toggle state. */
 @media (max-width: 680px) {
   .sidebar {
-    width: var(--sidebar-width-collapsed);
+    width: min(232px, calc(100vw - 72px));
   }
 
   .sidebar .sidebar__brand,
@@ -720,9 +718,9 @@
   }
 
   .sidebar .sidebar__nav-header {
-    padding: 12px 0 4px;
-    justify-content: center;
-    gap: 0;
+    padding: 12px 14px 4px 0;
+    justify-content: space-between;
+    gap: 8px;
   }
 
   .sidebar .sidebar__toggle {
@@ -739,11 +737,30 @@
     padding-bottom: 0;
   }
 
-  .sidebar .sidebar__nav-header .sidebar__nav-section {
+  .sidebar .sidebar__nav-section {
+    padding: 14px 18px 8px;
+  }
+
+  .sidebar .sidebar__nav-link {
+    gap: 10px;
+    padding: 10px 18px;
+  }
+
+  .sidebar.sidebar--collapsed {
+    width: var(--sidebar-width-collapsed);
+  }
+
+  .sidebar.sidebar--collapsed .sidebar__nav-header {
+    padding: 12px 0 4px;
+    justify-content: center;
+    gap: 0;
+  }
+
+  .sidebar.sidebar--collapsed .sidebar__nav-header .sidebar__nav-section {
     display: none;
   }
 
-  .sidebar .sidebar__nav-section {
+  .sidebar.sidebar--collapsed .sidebar__nav-section {
     height: 1px;
     background: rgba(255, 255, 255, 0.08);
     margin: 12px 14px;
@@ -753,18 +770,18 @@
     overflow: hidden;
   }
 
-  .sidebar .sidebar__nav-link {
+  .sidebar.sidebar--collapsed .sidebar__nav-link {
     justify-content: center;
     padding: 12px 8px;
     border-left: none;
     position: relative;
   }
 
-  .sidebar .sidebar__nav-link.is-active {
+  .sidebar.sidebar--collapsed .sidebar__nav-link.is-active {
     background: rgba(154, 202, 60, 0.1);
   }
 
-  .sidebar .sidebar__nav-link.is-active::before {
+  .sidebar.sidebar--collapsed .sidebar__nav-link.is-active::before {
     content: '';
     position: absolute;
     left: 0;
@@ -776,7 +793,7 @@
     border-radius: 0 3px 3px 0;
   }
 
-  .sidebar .sidebar__nav-label {
+  .sidebar.sidebar--collapsed .sidebar__nav-label {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -789,8 +806,8 @@
     pointer-events: none;
   }
 
-  .sidebar .sidebar__nav-link[data-tooltip]::after,
-  .sidebar .sidebar__nav-link[data-tooltip]::before {
+  .sidebar.sidebar--collapsed .sidebar__nav-link[data-tooltip]::after,
+  .sidebar.sidebar--collapsed .sidebar__nav-link[data-tooltip]::before {
     content: none;
   }
 }
@@ -800,7 +817,7 @@
     --sidebar-width-collapsed: 62px;
   }
 
-  .sidebar .sidebar__nav-header {
+  .sidebar.sidebar--collapsed .sidebar__nav-header {
     padding: 10px 0 2px;
   }
 
@@ -809,11 +826,11 @@
     height: 30px;
   }
 
-  .sidebar .sidebar__nav-section {
+  .sidebar.sidebar--collapsed .sidebar__nav-section {
     margin: 10px 12px;
   }
 
-  .sidebar .sidebar__nav-link {
+  .sidebar.sidebar--collapsed .sidebar__nav-link {
     padding: 11px 6px;
   }
 }

@@ -339,7 +339,7 @@
   }
 
   .topbar__brand-text {
-    font-size: 16px;
+    font-size: 24px;
   }
 
   .topbar__hamburger {
@@ -433,5 +433,11 @@
   .topbar__dropdown-link {
     color: var(--text-body);
     background: rgba(82, 46, 145, 0.06);
+  }
+}
+
+@media (max-width: 500px) {
+  .topbar__brand-text {
+    font-size: 20px;
   }
 }
