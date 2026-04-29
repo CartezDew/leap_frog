@@ -656,13 +656,14 @@ function answerBounce(q, analyzed) {
   if (any(q, ['channel', 'by source', 'by medium', 'breakdown'])) {
     const top = byChannel.slice(0, 6).map((c) => [
       c.medium || c.source || c.Medium || c.Source || '—',
+      fmtInt(c.total_users),
       fmtInt(c.sessions),
       fmtPct(c.bounce_rate),
     ]);
     return {
       answer:
         `**Bounce rate by channel:**\n\n` +
-        table(['Channel', 'Sessions', 'Bounce'], top) +
+        table(['Channel', 'Users', 'Sessions', 'Bounce'], top) +
         `\n\n*Site average: ${fmtPct(s.site_bounce_rate)}.* ` +
         `Channels above the site average are dragging your overall bounce rate up.`,
       source: 'data',

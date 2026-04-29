@@ -8,6 +8,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { useMemo } from 'react';
 import {
   LuChartLine,
   LuGauge,
@@ -19,6 +20,7 @@ import { PageHeader } from '../components/PageHeader/PageHeader.jsx';
 import { ChartWrapper } from '../components/ChartWrapper/ChartWrapper.jsx';
 import { DataTable } from '../components/DataTable/DataTable.jsx';
 import { EmptyState } from '../components/EmptyState/EmptyState.jsx';
+import { KpiCard } from '../components/KpiCard/KpiCard.jsx';
 import { BounceBadge } from '../components/StatusBadge/StatusBadge.jsx';
 import { StoryCards } from '../components/StoryCards/StoryCards.jsx';
 import { BenchmarkScale } from '../components/BenchmarkScale/BenchmarkScale.jsx';
@@ -32,6 +34,12 @@ import {
 
 const channelColumns = [
   { key: 'medium', header: 'Channel', className: 'col-strong' },
+  {
+    key: 'total_users',
+    header: 'Users',
+    align: 'right',
+    format: (v) => formatInteger(v),
+  },
   {
     key: 'sessions',
     header: 'Sessions',
@@ -99,6 +107,45 @@ const opportunityColumns = [
     key: 'content_role',
     header: 'Role',
     exportValue: (row) => row.content_role ?? '',
+  },
+];
+
+const highReachColumns = [
+  { key: 'page', header: 'Page', className: 'col-strong' },
+  {
+    key: 'sessions',
+    header: 'Sessions',
+    align: 'right',
+    format: (v) => formatInteger(v),
+  },
+  {
+    key: 'engaged_reach',
+    header: 'Engaged Sessions',
+    align: 'right',
+    format: (v) => formatInteger(v),
+  },
+  {
+    key: 'clean_engagement_rate',
+    header: 'Engagement',
+    align: 'right',
+    format: (v) => formatPercent(v),
+  },
+  {
+    key: 'bounce_rate',
+    header: 'Bounce',
+    align: 'right',
+    render: (row) => (
+      <span className={bounceClass(row.bounce_rate)}>
+        {formatPercent(row.bounce_rate)}
+      </span>
+    ),
+    exportValue: (row) => formatPercent(row.bounce_rate),
+  },
+  {
+    key: 'avg_engagement_time',
+    header: 'Avg Engagement',
+    align: 'right',
+    format: (v) => `${(v || 0).toFixed(1)}s`,
   },
 ];
 
@@ -208,18 +255,133 @@ function buildBounceStoryCards({ benchmark, bounce, summary }) {
   return cards;
 }
 
+function CleanTrafficBouncePanel({ summary, bots }) {
+  const botSummary = bots?.summary || {};
+  const classifiedSessions = Number(botSummary.classified_sessions) || 0;
+  if (!classifiedSessions) return null;
+
+  const confirmed = Number(botSummary.confirmed_bot_sessions) || 0;
+  const likely = Number(botSummary.likely_bot_sessions) || 0;
+  const aiSessions = Number(botSummary.ai_assistant_sessions) || 0;
+
+  return (
+    <article className="lever-card lever-card--info lever-card--inline">
+      <header className="lever-card__head">
+        <span className="lever-card__icon" aria-hidden="true">
+          <LuShield size={18} />
+        </span>
+        <h3 className="lever-card__title">Bounce rate after bot cleanup</h3>
+        <span className="lever-card__hint">city-classified session model</span>
+      </header>
+
+      <div className="card-grid card-grid--cols-4">
+        <KpiCard
+          label="Reported site bounce"
+          value={formatPercent(summary?.site_bounce_rate || 0, 1)}
+          sub="raw Medium/Source site total"
+        />
+        <KpiCard
+          label="City-classified bounce"
+          value={formatPercent(botSummary.classified_bounce_rate || 0, 1)}
+          sub={`${formatInteger(classifiedSessions)} city-classified sessions`}
+        />
+        <KpiCard
+          label="Confirmed bots removed"
+          value={formatPercent(botSummary.confirmed_removed_bounce_rate || 0, 1)}
+          accent="green"
+          sub={`${formatInteger(confirmed)} confirmed sessions removed`}
+        />
+        <KpiCard
+          label="Confirmed + likely removed"
+          value={formatPercent(
+            botSummary.confirmed_likely_removed_bounce_rate || 0,
+            1,
+          )}
+          accent="green"
+          sub={`${formatInteger(confirmed + likely)} bot-likely sessions removed`}
+        />
+      </div>
+
+      <p className="lever-card__body">
+        Use the confirmed-bot number as the conservative cleanup view and the
+        confirmed + likely number as the operational cleanup view. AI/AEO tools
+        such as ChatGPT, Claude, Gemini, and Perplexity are shown separately
+        ({formatInteger(aiSessions)} sessions here) because they can look bot-like
+        but represent discovery traffic, not spam.
+      </p>
+    </article>
+  );
+}
+
+/** Monthly points with peak/trough markers for chart labels (↑ high, ↓ low). */
+function buildHomepageTrendSeries(homepageMonthly) {
+  const rows = (homepageMonthly || []).map((m) => ({
+    month: m.month_name,
+    bouncePct: Math.round((m.bounce_rate || 0) * 1000) / 10,
+  }));
+  if (rows.length === 0) return [];
+  const pcts = rows.map((r) => r.bouncePct);
+  const maxVal = Math.max(...pcts);
+  const minVal = Math.min(...pcts);
+  const maxIdx = pcts.indexOf(maxVal);
+  const minIdx = pcts.indexOf(minVal);
+  const flat = maxVal === minVal;
+  return rows.map((r, i) => ({
+    ...r,
+    peakNum: i === maxIdx ? maxVal : null,
+    troughNum: !flat && i === minIdx ? minVal : null,
+  }));
+}
+
+function HomepageTrendDot(props) {
+  const { cx, cy, payload } = props;
+  if (cx == null || cy == null) return null;
+  const peak = payload?.peakNum;
+  const trough = payload?.troughNum;
+  const isPeak = peak != null;
+  const isTrough = trough != null;
+  const dy = isPeak ? -12 : isTrough ? 18 : 0;
+  const val = isPeak ? peak : trough;
+  const label = isPeak
+    ? `↑ ${Number(val).toFixed(1)}%`
+    : isTrough
+      ? `↓ ${Number(val).toFixed(1)}%`
+      : null;
+  const fill = isPeak ? '#dc2626' : '#16a34a';
+  return (
+    <g>
+      <circle cx={cx} cy={cy} r={3} fill="#dc2626" />
+      {label != null && (
+        <text
+          x={cx}
+          y={cy}
+          dy={dy}
+          textAnchor="middle"
+          fill={fill}
+          fontSize={11}
+          fontWeight={700}
+          style={{ pointerEvents: 'none' }}
+        >
+          {label}
+        </text>
+      )}
+    </g>
+  );
+}
+
 export function BounceRate() {
   const { hasData, analyzed } = useData();
   if (!hasData || !analyzed) return <EmptyState />;
 
   const bounce = analyzed.bounce || {};
   const summary = analyzed.summary || {};
+  const bots = analyzed.bots || {};
   const benchmark = bounce.benchmark || null;
 
-  const homepage = (bounce.homepage_monthly || []).map((m) => ({
-    month: m.month_name,
-    bouncePct: Math.round((m.bounce_rate || 0) * 1000) / 10,
-  }));
+  const homepage = useMemo(
+    () => buildHomepageTrendSeries(bounce.homepage_monthly),
+    [bounce.homepage_monthly],
+  );
 
   const storyCards = buildBounceStoryCards({ benchmark, bounce, summary });
 
@@ -243,6 +405,8 @@ export function BounceRate() {
         cards={storyCards}
         ariaLabel="Bounce-rate benchmark callouts"
       />
+
+      <CleanTrafficBouncePanel summary={summary} bots={bots} />
 
       <div id="bounce-benchmark-scale" className="scroll-anchor">
         <BenchmarkScale
@@ -275,7 +439,7 @@ export function BounceRate() {
             median (47.5%). Anything below the green band is best-in-class.
           </p>
           <ChartWrapper subtitle="Monthly bounce % for the homepage path, plotted against the industry tier scale.">
-            <LineChart data={homepage} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+            <LineChart data={homepage} margin={{ top: 22, right: 16, left: 0, bottom: 10 }}>
               <CartesianGrid stroke="#e5e7eb" strokeDasharray="3 3" />
               <XAxis dataKey="month" stroke="#6b7280" />
               <YAxis stroke="#dc2626" tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
@@ -300,7 +464,7 @@ export function BounceRate() {
                 dataKey="bouncePct"
                 stroke="#dc2626"
                 strokeWidth={2}
-                dot={{ r: 3 }}
+                dot={HomepageTrendDot}
                 name="Homepage bounce"
               />
             </LineChart>
@@ -320,6 +484,21 @@ export function BounceRate() {
         emptyMessage="No high-traffic, high-bounce pages — congrats."
         defaultSort={{ key: 'bounce_rate', dir: 'desc' }}
         exportFileStem="bounce-high-bounce-pages"
+      />
+
+      <h2 className="section-header">Highest-reach <em>engaged</em> pages</h2>
+      <p className="section-subhead">
+        Pages ranked by engaged sessions from the raw Page Path sheet. This is
+        the cleanest aggregate proxy for human reach after bot cleanup: exact
+        page-level bot subtraction requires session-level GA4 rows that include
+        page, city, and source on the same visit.
+      </p>
+      <DataTable
+        columns={highReachColumns}
+        rows={bounce.high_reach_engagement_pages || []}
+        emptyMessage="No high-reach engaged pages detected yet."
+        defaultSort={{ key: 'engaged_reach', dir: 'desc' }}
+        exportFileStem="bounce-high-reach-engaged-pages"
       />
 
       <h2 className="section-header">Pages with <em>low</em> bounce</h2>

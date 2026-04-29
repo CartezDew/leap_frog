@@ -4,6 +4,11 @@ Drop your GA4 Excel exports (`.xlsx` / `.xls`) **and** Semrush "Organic
 Performance" PDFs into this folder. The dashboard reads files **directly
 from this folder** and runs the analysis on whichever file(s) you select.
 
+For GA4 workbooks, the dashboard calculates from raw tabs such as `Source`,
+`Medium`, `Device`, `City`, `Page Path`, `Contact`, `Source-Medium-Device`,
+`User`, and `Consolidated Data`. Report-style tabs with formulas are preserved
+as reference material but do not override raw-derived dashboard metrics.
+
 ## Synthetic Semrush samples (already here)
 
 The four `synthetic-keywords-*-26.pdf` files in this folder are
@@ -65,8 +70,8 @@ root `.gitignore`. Only this README and `.gitkeep` are tracked, so client
 data won't be committed by accident.
 
 If you want to share a sanitized synthetic sample with collaborators, place
-it in `/sample-data/` instead — that folder is tracked and is what
-`scripts/smoke_test.mjs` runs against.
+it in `/sample-data/` or another tracked fixture folder instead. Do not commit
+real client workbooks.
 
 ## Drag-drop fallback
 

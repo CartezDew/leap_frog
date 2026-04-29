@@ -1,102 +1,81 @@
----
-name: dashboard-style-test
-description: A polished dark-mode house style for HTML dashboards, briefings, reports, and visual pages. Ships with a warm dark default palette (dark brown background, cream cards, orange accent, serif headings) that you can override by telling Claude your brand colors, fonts, or preferences. Use whenever generating HTML — dashboards, briefings, reports, wrapups, analytics pages, visual explainers, audit panels, pipeline views, resource landing pages. Trigger words include "dashboard", "briefing", "report", "html page", "visual page", "end of day", "wrapup", "morning briefing", "stats", "analytics".
----
+# Dashboard Notes
 
-# Dashboard Style
+This file documents the current Leapfrog dashboard behavior, language, and visual guardrails.
 
-A house design system for HTML pages. Ships with a default warm dark palette and serif/sans type pairing — swap any of it for your own brand by telling Claude (e.g. "use my brand colors: #XYZ and #ABC" or "swap the serif headings for Inter bold").
+## Product Purpose
 
-## When to use
+The dashboard turns raw GA4 and Semrush exports into browser-only analytics views for client strategy work. It should explain what the uploaded data supports directly and clearly label anything that is modeled from aggregate data.
 
-**Default for HTML output.** Morning briefings, wrapups, pipeline views, research dashboards, stats pages, analytics reports, audit panels, visual explainers, resource landing pages — all of them. The exceptions:
-- Slideshows → use a slideshow skill instead (they have their own theme)
-- PowerPoint `.pptx` → use the pptx skill
-- Single static infographic images → use an image-generation skill
+## Data Model
 
-## Customizing for your brand
+The dashboard calculates from raw tabs:
 
-This skill has sensible defaults, but you can override any of it:
-- **Colors:** "Use my brand colors — navy #0a2540 and lime #c6f432" → skill uses those instead of the defaults
-- **Fonts:** "Use Inter for everything" or "Use Playfair Display for headings"
-- **Mode:** "Make it light mode" — skill flips the background/surface relationship
-- **Motion:** "No animations" — skill strips the orb drift and pulses
+- `Source`
+- `Medium`
+- `Device`
+- `City`
+- `New - Est. Users`
+- `Page Path`
+- `Contact`
+- `Source-Medium-Device`
+- `User`
+- `Consolidated Data`
 
-If you don't specify, it ships with the defaults below.
+Report-style tabs are reference material. They are preserved for comparison, but they do not drive dashboard KPIs.
 
-## Default design tokens
+## Bot And Bounce Language
 
-### Colors (warm dark default)
-```
---bg: #1a1714             /* dark page background */
---bg-2: #211e1a           /* slightly lifted dark surface */
---surface: #faf5ef        /* cream card background */
---surface-hover: #f5ede4  /* cream card on hover */
---surface-dark: #2a2520   /* dark inputs, inset panels */
---border: #e8ddd0         /* light border on cream cards */
---border-dark: #3a332c    /* subtle divider on dark bg */
---text-dark: #1a1714      /* body text on cream cards */
---text-light: #f5ede4     /* body text on dark bg */
---text-secondary-light: #a89a8c
---text-muted-light: #6b5f53
---text-secondary-dark: #5c4f42
---accent: #D97757         /* default warm orange accent */
---accent-light: #e8956e
---accent-dark: #c4613f
---accent-glow: rgba(217, 119, 87, 0.15)
---accent-cream: #f7efe7
---warm-gold: #c4a265
-```
+Use neutral, data-dependent language.
 
-### Typography (default)
-- **Headings:** `'Instrument Serif', Georgia, serif` — 400 weight, tight tracking, one word per heading italicized in the accent color (e.g. "Your *morning* briefing").
-- **Body:** `'Inter', -apple-system, sans-serif` — weights 400/500/600/700
-- **Monospace:** `'SF Mono', 'Fira Code', monospace` — slash commands, code
-- **Hero h1 sizing:** `clamp(38px, 5.5vw, 72px)`
+Good:
 
-### Google Fonts import
-```html
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-```
+- “Confirmed bot removal changes city-classified bounce to X%.”
+- “Confirmed + likely automated city traffic removal changes it to Y%.”
+- “Page-level bot cleanup requires row-level session data.”
+- “AI/AEO sources are reported separately from spam bots.”
 
-## Signature visual elements (default flavor — optional)
+Avoid:
 
-1. **Starburst SVG mark** — a decorative sun/spark icon for the header. Spins slowly (20s). Swap for your own logo SVG if you have one.
-2. **Ambient orbs** — three blurred colored orbs drifting behind the content: `filter: blur(150px); opacity: 0.06; animation: drift 25s`. Skip if you want a flat page.
-3. **Badge with pulsing dot** — small accent-colored pill at the top with a pulsing dot. Used for timestamps or live status.
-4. **Italic accent in every heading** — one word italicized in the accent color per heading.
+- Fixed numbers in static copy.
+- “True homepage bounce” unless row-level page + city/source data exists.
+- Claims that city and source bot sessions are unioned from aggregate tabs.
 
-## Standard page skeleton (recommended order)
+## Measured Versus Modeled
 
-1. **Ambient orbs** (fixed, behind everything) — optional
-2. **Header** — logo/mark + wordmark + badge + serif h1 + subtitle + stats bar + divider
-3. **Main content** — the dashboard body (sections, cards, metrics)
-4. **Footer** — small centered credit line
+Measured values come directly from raw tabs after parser/analyzer aggregation.
 
-## Default patterns
+Modeled values are allowed only when the UI makes the limitation clear. Current limitation: `Page Path`, `City`, and `Source` are separate aggregate tabs, so the dashboard cannot prove which page sessions came from bot cities or bot sources without row-level data.
 
-1. Dark page background with cream cards laid on top. (Flip for light mode if requested.)
-2. Accent color is for highlights only — italicized heading words, stat numbers, CTA pills, hover borders, icons. Never flood with accent.
-3. One serif for headings, one sans for body — pair them cleanly.
-4. Rounded corners: cards = 14px, modal = 20px, inputs = 12px, pills = 100px.
-5. Subtle animations: `fade-in` on sections, `drift` on orbs, `spin-slow` on the logo, `pulse-dot` on badges.
+## AI / AEO Distinction
 
-## What to include by dashboard type
+Traffic from ChatGPT, Claude, Gemini, Perplexity, Copilot, and similar tools can look automated because sessions may be short or high bounce. The dashboard separates these sources from spam/datacenter bots and frames them as discovery traffic.
 
-- **Morning briefing:** Badge (`Today&#39;s briefing`), hero ("Your *morning* briefing"), stats bar (emails/calendar/priorities), category sections for each block.
-- **Pipeline dashboard:** Badge (`Pipeline`), hero ("*Content* pipeline"), stats bar (posted/ready/filmed/ideas), card grid grouped by status.
-- **Wrapup / end-of-day:** Badge (`End of day`), hero ("Today&#39;s *wrapup*"), stats bar (wins/filmed/posted/shipped), category sections.
-- **Research / analytics:** Badge (`Research`), hero with topic italicized, stats bar of key metrics, findings as cards.
-- **Audit / weekly review:** Big score ring and priority-tagged recs. Use the audit panel pattern in `references/components.md`.
+## UI Tone
 
-## Files in this skill
+The dashboard should be:
 
-- `SKILL.md` — this file
-- `template.html` — the starter template. Copy this as your base for every new dashboard.
-- `references/components.md` — copy-paste HTML for common components (stat bar, card, category section, modal, audit panel).
+- Informational
+- Plainspoken
+- Client-safe
+- Clear about assumptions
+- Specific about what the current upload supports
 
-## Guardrails
+Avoid copy that appears to defend a prior strategy claim. The same dashboard must work for different reports with different values.
 
-- No Tailwind, Bootstrap, or CSS frameworks — this is vanilla custom CSS so it's easy to inspect and edit.
-- Use lucide-style line SVGs for section icons (cleaner than emoji for dashboards).
-- If a user specifies their own brand, honor their palette/fonts over the defaults.
+## Styling Guardrails
+
+- No inline styles in JSX.
+- Use `src/styles/global.css` for all visual styling.
+- Use existing card, table, badge, and lever-card patterns before adding new UI primitives.
+- Use `KpiCard`, `DataTable`, `PageHeader`, and existing status badges for consistency.
+- Keep exportable data in tables where possible.
+
+## Implementation References
+
+- `src/lib/parser.js`: sheet classification, raw/reference separation, reshaping.
+- `src/lib/analyzer.js`: core calculations, bot scoring, cleaned bounce views, page rankings.
+- `src/lib/levers.js`: cross-page derived insight helpers.
+- `src/pages/BounceRate.jsx`: cleaned bounce panel and high-reach engaged pages.
+- `src/pages/BotTraffic.jsx`: bot/AEO explanation, measured-vs-modeled note, row-level data recommendation.
+- `src/pages/About.jsx`: user-facing help and glossary.
+- `DEVELOPMENT_HANDOFF.md`: developer implementation contract.

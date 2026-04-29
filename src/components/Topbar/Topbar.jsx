@@ -1,9 +1,9 @@
-// Top navigation bar: Help, Overview (or Get Started).
+// Top navigation bar: Overview (or Get Started), Help.
 //
 // - "Overview" routes to the executive summary view, but only once data has
 //   been uploaded. Until then, the same tab control reads "Get Started" and
 //   sends users to the upload flow.
-// - Below 580px the inline tabs collapse into a hamburger-driven dropdown
+// - Below 680px the inline tabs collapse into a hamburger-driven dropdown
 //   menu, controlled entirely with state + a media-query-aware stylesheet.
 // - Page-level "Growth Lever" insights (warm prospects, channel quality,
 //   AI search visibility, refresh candidates, bot impact) are woven into the
@@ -111,6 +111,31 @@ export function Topbar() {
           className={`topbar__nav${open ? ' topbar__nav--open' : ''}`}
           aria-label="Primary"
         >
+          {items.map((item) => {
+            const Icon = item.icon;
+            const isCta = Boolean(item.isOverview && !hasData);
+            return (
+              <NavLink
+                key={item.label}
+                to={item.to}
+                end={item.end}
+                className={({ isActive }) =>
+                  [
+                    'topbar__link',
+                    isActive ? 'is-active' : '',
+                    isCta ? 'topbar__link--cta' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')
+                }
+              >
+                <span className="topbar__link-icon" aria-hidden="true">
+                  <Icon size={16} />
+                </span>
+                <span className="topbar__link-label">{item.label}</span>
+              </NavLink>
+            );
+          })}
           <div className={`topbar__dropdown${helpActive ? ' is-active' : ''}${helpOpen ? ' is-open' : ''}`}>
             <button
               type="button"
@@ -150,31 +175,6 @@ export function Topbar() {
               })}
             </div>
           </div>
-          {items.map((item) => {
-            const Icon = item.icon;
-            const isCta = Boolean(item.isOverview && !hasData);
-            return (
-              <NavLink
-                key={item.label}
-                to={item.to}
-                end={item.end}
-                className={({ isActive }) =>
-                  [
-                    'topbar__link',
-                    isActive ? 'is-active' : '',
-                    isCta ? 'topbar__link--cta' : '',
-                  ]
-                    .filter(Boolean)
-                    .join(' ')
-                }
-              >
-                <span className="topbar__link-icon" aria-hidden="true">
-                  <Icon size={16} />
-                </span>
-                <span className="topbar__link-label">{item.label}</span>
-              </NavLink>
-            );
-          })}
         </nav>
       </div>
     </header>

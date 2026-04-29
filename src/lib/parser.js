@@ -76,11 +76,16 @@ function shape(grid) {
 function isAnalysisSheet(grid) {
   const [rows, cols] = shape(grid);
   if (rows < 1 || cols < 2) return false;
-  const cell = rowAt(grid, 0)[1];
-  if (isBlank(cell)) return false;
-  const text = String(cell).toLowerCase();
-  if (!text.includes('|')) return false;
-  return ANALYSIS_SHEET_KEYWORDS.some((kw) => text.includes(kw));
+  const titleCells = rowAt(grid, 0).slice(0, Math.min(cols, 3));
+  return titleCells.some((cell) => {
+    if (isBlank(cell)) return false;
+    const text = String(cell).toLowerCase();
+    if (!text.includes('|')) return false;
+    return (
+      ANALYSIS_SHEET_KEYWORDS.some((kw) => text.includes(kw)) ||
+      (text.includes('bot') && text.includes('traffic'))
+    );
+  });
 }
 
 function classifyByName(sheetName) {
@@ -156,14 +161,13 @@ function classifyByHeaders(grid) {
 }
 
 export function classifySheet(sheetName, grid) {
-  // Prefer name-based classification: if the sheet name clearly identifies it
-  // as a raw data category (e.g. "User ID Engagement"), use that even if row 0
-  // contains a banner/title cell that would otherwise look like a curated
-  // analysis sheet. Curated analysis tabs the user wants passed through tend
-  // to use names that don't match these categories.
+  // Report/calculation tabs can have names that overlap raw categories
+  // ("Traffic Sources", "Contact Form Intel", "User ID Engagement"). Treat
+  // banner-style sheets as reference material first so raw calculations only
+  // come from the GA4 data tabs.
+  if (isAnalysisSheet(grid)) return 'analysis';
   const byName = classifyByName(sheetName);
   if (byName) return byName;
-  if (isAnalysisSheet(grid)) return 'analysis';
   const byHeaders = classifyByHeaders(grid);
   if (byHeaders) return byHeaders;
   return 'unrecognized';

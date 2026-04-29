@@ -197,6 +197,10 @@ export function BotTraffic() {
   const sum = bots.summary || {};
   const methodology = bots.methodology || {};
   const impact = computeBotImpact(analyzed.summary, bots);
+  const homepageRow = (analyzed.pages?.top_pages || []).find((p) => {
+    const path = String(p?.page || '').trim();
+    return path === '/' || path === '/index' || path === '/home';
+  });
   const showImpact =
     impact.confirmed_bot_sessions > 0 || impact.bot_user_ids > 0;
 
@@ -224,7 +228,7 @@ export function BotTraffic() {
               <LuBot size={18} />
             </span>
             <h3 className="lever-card__title">Bot impact on reported metrics</h3>
-            <span className="lever-card__hint">use this number with leadership</span>
+            <span className="lever-card__hint">based on the current upload</span>
           </header>
           <p className="lever-card__metric">
             <strong>{formatPercent(impact.bot_share_of_classified, 1)}</strong>
@@ -233,24 +237,27 @@ export function BotTraffic() {
             </span>
           </p>
           <p className="lever-card__body">
-            Filtering these {formatInteger(impact.confirmed_bot_sessions)} sessions
-            out of GA4 lifts the reported engagement rate from{' '}
-            {formatPercent(impact.reported_engagement, 1)} to{' '}
-            <strong>{formatPercent(impact.clean_engagement, 1)}</strong>
-            {impact.engagement_lift > 0 && (
-              <>
-                {' '}— a <strong>+{formatPercent(impact.engagement_lift, 1)}</strong> swing
-              </>
-            )}
-            . The session count above and the bot user-ID count below are{' '}
-            <em>different measurements</em> of the same problem (sessions are
-            counted from bot-classified cities &amp; sources, user IDs are counted
-            from the User sheet) — they will rarely be the same number, and
-            that's expected. Use the cleaner engagement rate when reporting to
-            leadership.
+            Removing confirmed-bot city traffic changes the city-classified
+            bounce rate from <strong>{formatPercent(impact.classified_bounce, 1)}</strong>{' '}
+            to <strong>{formatPercent(impact.confirmed_removed_bounce, 1)}</strong>.
+            Removing confirmed + likely bot city traffic moves it to{' '}
+            <strong>{formatPercent(impact.confirmed_likely_removed_bounce, 1)}</strong>.
+            AI/AEO assistant traffic is reported separately
+            ({formatInteger(impact.ai_assistant_sessions)} sessions at{' '}
+            {formatPercent(impact.ai_assistant_bounce, 1)} bounce), not treated
+            as spam bots.
           </p>
         </article>
       )}
+
+      {showImpact && (
+        <BotCleanupCommunicationNote
+          impact={impact}
+          homepageBounce={homepageRow?.bounce_rate}
+        />
+      )}
+
+      <BotFilteringRecommendation />
 
       <h2 className="section-header">City-level bot <em>scoring</em></h2>
       <DataTable
@@ -272,6 +279,76 @@ export function BotTraffic() {
       <h2 className="section-header"><em>Methodology</em></h2>
       <MethodologyExplainer summary={sum} methodology={methodology} />
     </>
+  );
+}
+
+function BotFilteringRecommendation() {
+  return (
+    <article className="lever-card lever-card--good lever-card--inline">
+      <header className="lever-card__head">
+        <span className="lever-card__icon" aria-hidden="true">
+          <LuRadioTower size={18} />
+        </span>
+        <h3 className="lever-card__title">Data needed for session-level bot filtering</h3>
+        <span className="lever-card__hint">separates bots, AI/AEO, and human traffic</span>
+      </header>
+      <p className="lever-card__body">
+        The current upload uses aggregate GA4 tabs, so city, source, and page
+        behavior are analyzed as separate views. A row-level session export would
+        allow those signals to be evaluated together. Useful fields include{' '}
+        <strong>page path, session source/medium, city, device, user or session
+        ID, engaged-session flag, event count, engagement time, and landing
+        page</strong>.
+      </p>
+      <p className="lever-card__body lever-card__body--note">
+        With row-level data, each visit can be classified as{' '}
+        <strong>true bot</strong>, <strong>AI/AEO discovery</strong>, or{' '}
+        <strong>human</strong>. That makes page-level bot removal measurable
+        instead of estimated, while keeping ChatGPT, Claude, Gemini, and
+        Perplexity separate from spam or datacenter bot traffic.
+      </p>
+    </article>
+  );
+}
+
+function BotCleanupCommunicationNote({ impact, homepageBounce }) {
+  const hasHomepage = typeof homepageBounce === 'number';
+  return (
+    <article className="lever-card lever-card--neutral lever-card--inline">
+      <header className="lever-card__head">
+        <span className="lever-card__icon" aria-hidden="true">
+          <LuSigma size={18} />
+        </span>
+        <h3 className="lever-card__title">How to communicate cleaned bounce rates</h3>
+        <span className="lever-card__hint">what this upload can support</span>
+      </header>
+      <p className="lever-card__body">
+        Confirmed bot removal changes the city-classified bounce rate to{' '}
+        <strong>{formatPercent(impact.confirmed_removed_bounce, 1)}</strong>.
+        Removing confirmed + likely automated city traffic changes it to{' '}
+        <strong>{formatPercent(impact.confirmed_likely_removed_bounce, 1)}</strong>.
+        These values are recalculated from the current upload.
+      </p>
+      <p className="lever-card__body lever-card__body--note">
+        Page-level cleanup is limited by the shape of the raw tabs. Page Path,
+        City, and Source are separate aggregates, so this upload can show
+        {hasHomepage ? (
+          <>
+            {' '}reported homepage bounce of{' '}
+            <strong>{formatPercent(homepageBounce, 1)}</strong>
+          </>
+        ) : (
+          ' reported homepage bounce'
+        )}
+        , but it cannot directly identify which homepage sessions came from bot
+        cities, spam sources, or AI/AEO referrers.
+      </p>
+      <p className="lever-card__body lever-card__body--note">
+        AI/AEO sources like ChatGPT, Claude, Gemini, and Perplexity are separated
+        from spam bots. They may look bot-like in engagement patterns, but the
+        message should be discovery traffic, not traffic to exclude as fraud.
+      </p>
+    </article>
   );
 }
 
@@ -297,7 +374,7 @@ function BotKpiGroups({ summary, aiAssistants }) {
           <LuShieldAlert size={14} aria-hidden="true" />
           Sessions by bot classification
           <span className="bot-kpi-group__hint">
-            combined city + source detection — answers <em>“how dirty is the
+            city-level session scoring — answers <em>“how dirty is the
             traffic in my GA4 view?”</em>
           </span>
         </h3>
@@ -482,14 +559,14 @@ function MethodologyExplainer({ summary, methodology }) {
           </p>
           <p className="bot-method-callout__share">
             ≈ <strong>{formatPercent(confirmedShare, 1)}</strong> of classified
-            sessions originated from confirmed bot cities &amp; sources.
+            sessions originated from confirmed bot cities.
           </p>
           <p className="bot-method-callout__body">
-            Each <strong>city</strong> and each <strong>traffic source</strong>{' '}
-            gets its own bot score. The headline KPI takes the higher of the
-            two views per bucket so a binary city signal (datacenter vs. clean)
-            doesn't hide a softer source-level gradient. Answers <em>“how dirty
-            is the traffic in my GA4 view?”</em>
+            The headline KPI uses the <strong>City sheet</strong> because those
+            rows form a real session partition. Source scoring remains a
+            separate evidence lens below; GA4 city and source aggregates cannot
+            be unioned without session-level data. Answers <em>“how dirty is the
+            traffic in my GA4 view?”</em>
           </p>
         </article>
 
@@ -542,9 +619,9 @@ function MethodologyExplainer({ summary, methodology }) {
           <p className="bot-method-callout__body">
             ChatGPT, Claude, Gemini, Perplexity &amp; co. read the page and
             leave fast — that looks like a bot to a generic rule, but it's a
-            real, valuable visit. The dashboard <strong>excludes them from the
-            bot session counts</strong> so they don't skew the “dirty traffic”
-            number. Answers <em>“how much real traffic is AI sending me?”</em>
+            real, valuable visit. The dashboard reports them separately so they
+            can be interpreted as their own acquisition channel. Answers{' '}
+            <em>“how much real traffic is AI sending me?”</em>
           </p>
         </article>
       </div>

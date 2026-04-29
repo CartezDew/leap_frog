@@ -1,24 +1,23 @@
 # Leapfrog Services Analytics Dashboard
 
-A frontend-only React analytics dashboard for Leapfrog Services. Drop a Google
-Analytics 4 (GA4) Excel export onto the upload page and the browser:
+A frontend-only React analytics dashboard for Leapfrog Services. Upload raw
+Google Analytics 4 (GA4) Excel tabs and optional Semrush keyword PDFs, and the browser:
 
 1. Reads the file with `FileReader` + SheetJS (`xlsx`).
 2. Classifies every sheet (sheet name → header fingerprint).
 3. Reshapes the GA4 wide-monthly format into long format in plain JavaScript.
-4. Runs bounce-rate, engagement, bot scoring, user-persona, unicorn-page, and
-   contact-form classification entirely in the browser.
+4. Runs bounce-rate, engagement, bot scoring, AI/AEO source detection,
+   user-persona, unicorn-page, keyword, and contact-form analysis in the browser.
 5. Stores the resulting dataset in React Context **and** `localStorage`
    (`leapfrog_data`) so a refresh keeps you on the dashboard.
 
-There is **no backend, no API, no Python at runtime, and no network requests
-after the initial page load**. The file you upload never leaves your machine.
+There is **no backend, no API, and no Python at runtime**. Uploaded workbook
+analysis happens in the browser. Optional built-in upload data and SEO/AEO crawl
+features may fetch selected local/static assets or the public website when used.
 
 The data parsing rules, bot/user-engagement scoring methodology, calculation
-formulas, and styling tokens all live in [`SKILL.md`](./SKILL.md). The visual
-language is in [`DASHBOARD.md`](./DASHBOARD.md). Both files are treated as
-"skills" — keep them as the source of truth and update the code when they
-change.
+formulas, and styling tokens live in [`SKILL.md`](./SKILL.md). The development
+handoff and source-of-truth rules live in [`DEVELOPMENT_HANDOFF.md`](./DEVELOPMENT_HANDOFF.md).
 
 ---
 
@@ -43,7 +42,8 @@ leap_frog/
 ├── public/                Static assets served at root
 ├── sample-data/           Drop sample GA4 .xlsx files here for dev testing
 ├── scripts/
-│   └── smoke_test.mjs     Node script that runs the parser+analyzer on the sample file
+│   ├── build-synthetic-semrush.mjs
+│   └── smoke-synthetic-keywords.mjs
 ├── src/
 │   ├── main.jsx           ReactDOM root + DataProvider + Router
 │   ├── App.jsx            Route table
@@ -51,7 +51,7 @@ leap_frog/
 │   ├── lib/
 │   │   ├── skillConfig.js   Constants ported from SKILL.md
 │   │   ├── parser.js        Sheet classification + wide→long reshaping
-│   │   ├── analyzer.js      Bot scoring, personas, unicorns, contact intel
+│   │   ├── analyzer.js      Bot scoring, personas, cleaned bounce, pages, contact intel
 │   │   ├── validator.js     Validation report builder
 │   │   ├── sheetReader.js   FileReader → XLSX.read → parser → analyzer
 │   │   └── formatters.js    Display helpers (numbers, percents, durations)
@@ -60,9 +60,10 @@ leap_frog/
 │   ├── components/        Sidebar, UploadZone, ValidationReport, KpiCard,
 │   │                      DataTable, StatusBadge, ChartWrapper, EmptyState,
 │   │                      Layout, PageHeader
-│   └── pages/             Upload + 9 report pages (Executive Summary, etc.)
+│   └── pages/             Upload, help, GA4 report pages, SEO/AEO, Keywords
 ├── SKILL.md               Data parsing & analysis specification
-├── DASHBOARD.md           Visual design notes
+├── DASHBOARD.md           Dashboard behavior and UI notes
+├── DEVELOPMENT_HANDOFF.md Current implementation logic for developers
 └── README.md              You are here
 ```
 
@@ -90,15 +91,15 @@ npm run build
 npm run preview
 ```
 
-### Smoke test the parser
+### Smoke test keyword parsing
 
 ```bash
-node scripts/smoke_test.mjs
+npm run smoke:synthetic-semrush
 ```
 
-Runs the browser parser + analyzer + validator over `sample-data/synthetic_ga4.xlsx`
-in plain Node. Use this when you change `src/lib/parser.js` or `src/lib/analyzer.js`
-to confirm the wide-to-long reshape and aggregations still match SKILL.md.
+Runs the synthetic Semrush keyword smoke check. For GA4 calculation changes,
+use the sample workbook in `src/Excel/` or a client-safe fixture and run the
+parser/analyzer directly through Node.
 
 ---
 
@@ -155,13 +156,16 @@ If you want a sample workbook to ship with the deployed site, copy it into
 
 1. Open the dashboard. With no data, the home page shows an empty state with a
    **Go to Upload** CTA.
-2. On the Upload page, drop a GA4 `.xlsx` export (or click *Choose File*).
+2. On the Upload page, drop a GA4 `.xlsx` export or select an available Upload DATA file.
 3. The browser reads it, classifies every sheet, reshapes wide monthly data into
    long form, and runs the full analysis pipeline — all in JavaScript, all
    client-side.
-4. A validation report shows what was detected, what was missing, and any
+4. Raw GA4 tabs are used as the source of truth. Report-style/calculated tabs
+   are preserved as reference material and can be compared against raw-derived
+   results, but they do not drive dashboard metrics.
+5. A validation report shows what was detected, what was missing, and any
    warnings. The full dataset is persisted to `localStorage`.
-5. Navigate the nine report pages from the sidebar:
+6. Navigate the report pages from the sidebar:
    - Executive Summary
    - Actionable Insights
    - Bounce Rate
@@ -171,7 +175,10 @@ If you want a sample workbook to ship with the deployed site, copy it into
    - Unicorn Pages
    - Contact Form Intel
    - Bot Traffic Intelligence
-6. Click **Clear Data & Re-upload** in the sidebar (or on the Upload page) to
+   - Keywords
+   - SEO / AEO
+   - About / How to Use
+7. Click **Clear Data & Re-upload** in the sidebar (or on the Upload page) to
    wipe `localStorage` and start over.
 
 A refresh of the page rehydrates Context from `localStorage` instantly — no
@@ -190,11 +197,24 @@ re-upload needed.
 
 ---
 
+## Current Calculation Contract
+
+- Raw GA4 tabs are the source of truth.
+- Annual bounce rate is `1 - engaged_sessions / sessions` after summing raw counts.
+- Bot session KPIs use the `City` partition because source + city aggregates cannot be unioned without row-level session data.
+- Source-level bot scoring remains a supporting evidence lens.
+- AI/AEO traffic is separated from spam bots.
+- Page-level bot cleanup is modeled unless the upload includes row-level sessions with page, city, source, device, and engagement fields.
+
+See [`DEVELOPMENT_HANDOFF.md`](./DEVELOPMENT_HANDOFF.md) for the full implementation notes.
+
+---
+
 ## When the spec changes
 
 If `SKILL.md` is updated (new metric alias, new bot rule, threshold tweak):
 
 1. Update the matching constant in `src/lib/skillConfig.js`.
 2. Update the relevant calculation in `src/lib/analyzer.js` or `src/lib/parser.js`.
-3. Re-run `node scripts/smoke_test.mjs` against the sample workbook.
+3. Re-run the relevant parser/analyzer check against a safe fixture.
 4. Re-run `npm run build` to confirm everything compiles.

@@ -25,8 +25,8 @@ import { PageHeader } from '../components/PageHeader/PageHeader.jsx';
 const DATA_SOURCES = [
   {
     icon: LuDatabase,
-    title: 'GA4 reports',
-    body: 'Traffic, engagement, bounce rate, conversions, channels, pages, users, and form signals from Google Analytics 4 exports.',
+    title: 'GA4 raw tabs',
+    body: 'The dashboard calculates from raw GA4 tabs such as Source, Device, City, Page Path, Contact, Source-Medium-Device, User, Medium, and Consolidated Data.',
   },
   {
     icon: LuChartBar,
@@ -94,7 +94,7 @@ const DASHBOARD_TABS = [
   {
     icon: LuShieldAlert,
     title: 'Bot Traffic Intelligence',
-    body: 'Traffic quality checks. Flags likely automated or suspicious traffic that can distort results.',
+    body: 'Traffic quality checks. Scores city, source, and user-ID behavior, separates AI/AEO discovery traffic from spam bots, and explains measured versus modeled cleanup limits.',
   },
 ];
 
@@ -102,7 +102,7 @@ const HOW_TO_STEPS = [
   {
     icon: LuUpload,
     title: '1. Upload the reports',
-    body: 'Use GA4 Excel files for website behavior. Use Semrush PDFs for keyword and SEO views.',
+    body: 'Use the raw GA4 Excel tabs for dashboard calculations. Report-style sheets with formulas are kept only as reference material for accuracy checks.',
   },
   {
     icon: LuCompass,
@@ -122,7 +122,7 @@ const HOW_TO_STEPS = [
   {
     icon: LuLightbulb,
     title: '5. Turn findings into actions',
-    body: 'Prioritize fixes with high traffic, high value, weak engagement, or clear page-to-keyword gaps.',
+    body: 'Prioritize fixes with high traffic, high value, weak engagement, clear page-to-keyword gaps, or measured bot/noise distortion.',
   },
 ];
 
@@ -147,6 +147,16 @@ const KEY_DEFINITIONS = [
     title: 'AEO',
     body: 'Answer Engine Optimization: content structured so AI tools and search snippets can understand and quote the answer.',
   },
+  {
+    icon: LuShieldAlert,
+    title: 'Cleaned bounce rate',
+    body: 'A recalculated bounce-rate view after removing bot-classified city traffic from the current upload. Page-level cleanup is modeled unless row-level session data ties page, city, and source together.',
+  },
+  {
+    icon: LuBot,
+    title: 'AI/AEO traffic',
+    body: 'Visits from tools such as ChatGPT, Claude, Gemini, and Perplexity. These can look bot-like but are treated as discovery traffic, not spam bots.',
+  },
 ];
 
 const COMMITMENTS = [
@@ -157,8 +167,8 @@ const COMMITMENTS = [
   },
   {
     icon: LuShieldCheck,
-    title: 'Cross-checks built in',
-    body: 'When the same KPI appears in multiple places, the dashboard checks for mismatches.',
+    title: 'Raw tabs are the source of truth',
+    body: 'Calculated report tabs are not used to drive dashboard metrics. They can be compared against raw-derived results, but raw GA4 tabs own the calculations.',
   },
   {
     icon: LuZap,
@@ -193,8 +203,9 @@ function HelpCallout() {
     <aside className="about-callout" aria-label="Client note">
       <LuShieldCheck size={20} aria-hidden="true" />
       <p>
-        <strong>Client note:</strong> keyword views describe search terms and page
-        opportunities. They do not count individual people, leads, or advertisers.
+        <strong>Client note:</strong> dashboard calculations come from the raw
+        upload tabs. Modeled values are labeled separately when the raw export
+        does not contain the row-level detail needed for exact measurement.
       </p>
     </aside>
   );
@@ -215,7 +226,7 @@ export function About() {
         Data <em>sources</em>
       </h2>
       <p className="section-subhead">
-        The dashboard reads standard client exports and turns them into decision-ready views.
+        The dashboard reads standard client exports and turns raw behavior data into decision-ready views.
       </p>
       <BulletList items={DATA_SOURCES} />
 
@@ -282,6 +293,38 @@ export function HowToUse() {
         Common <em>questions</em>
       </h2>
       <BulletList items={KEY_DEFINITIONS} variant="compact" />
+
+      <h2 className="section-header">
+        Read bot cleanup <em>carefully</em>
+      </h2>
+      <div className="about-guide-grid">
+        <article className="about-guide-card">
+          <LuShieldAlert size={22} aria-hidden="true" />
+          <h3>Measured cleanup</h3>
+          <p>
+            City-level cleaned bounce rates are recalculated from the current raw
+            upload. They show how bounce changes after removing confirmed, or
+            confirmed + likely, automated city traffic.
+          </p>
+        </article>
+        <article className="about-guide-card">
+          <LuFileText size={22} aria-hidden="true" />
+          <h3>Modeled page cleanup</h3>
+          <p>
+            Page Path, City, and Source are separate aggregate tabs. Page-level
+            bot removal is an estimate unless the upload includes row-level
+            sessions that tie the page to source, city, and engagement.
+          </p>
+        </article>
+        <article className="about-guide-card">
+          <LuSparkles size={22} aria-hidden="true" />
+          <h3>AI/AEO discovery</h3>
+          <p>
+            AI assistant sources may behave like bots, but they are reported as a
+            separate discovery channel rather than filtered as spam traffic.
+          </p>
+        </article>
+      </div>
     </>
   );
 }

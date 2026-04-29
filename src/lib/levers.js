@@ -161,19 +161,27 @@ export function shortenId(id, head = 6, tail = 4) {
   return `${s.slice(0, head)}…${s.slice(-tail)}`;
 }
 
-// Bot-impact projection: how much does removing confirmed bots lift the
-// reported engagement rate? Returns numbers ready to format.
+// Bot-impact projection: cleaned bounce/engagement views derived from the
+// current bot summary. Returns numbers ready to format.
 export function computeBotImpact(summary, bots) {
   const totalSessions = num(summary?.total_sessions);
   const botSummary = bots?.summary || {};
   const confirmedBotSessions = num(botSummary.confirmed_bot_sessions);
+  const likelyBotSessions = num(botSummary.likely_bot_sessions);
   const humanSessions = num(botSummary.human_sessions);
   const allClassified =
     confirmedBotSessions +
-    num(botSummary.likely_bot_sessions) +
+    likelyBotSessions +
     num(botSummary.suspicious_sessions) +
     humanSessions;
   const reportedEngagement = num(summary?.engagement_rate);
+  const reportedBounce = num(summary?.site_bounce_rate);
+  const classifiedBounce = num(botSummary.classified_bounce_rate);
+  const confirmedRemovedBounce = num(botSummary.confirmed_removed_bounce_rate);
+  const confirmedLikelyRemovedBounce = num(
+    botSummary.confirmed_likely_removed_bounce_rate,
+  );
+  const humanOnlyBounce = num(botSummary.human_only_bounce_rate);
   const cleanEngagement = humanSessions
     ? Math.min(1, reportedEngagement * (totalSessions / humanSessions))
     : reportedEngagement;
@@ -183,10 +191,22 @@ export function computeBotImpact(summary, bots) {
       ? confirmedBotSessions / allClassified
       : 0,
     confirmed_bot_sessions: confirmedBotSessions,
+    likely_bot_sessions: likelyBotSessions,
     bot_user_ids: num(botSummary.bot_user_ids),
     reported_engagement: reportedEngagement,
     clean_engagement: cleanEngagement,
     engagement_lift: cleanEngagement - reportedEngagement,
+    reported_bounce: reportedBounce,
+    classified_bounce: classifiedBounce,
+    confirmed_removed_bounce: confirmedRemovedBounce,
+    confirmed_likely_removed_bounce: confirmedLikelyRemovedBounce,
+    human_only_bounce: humanOnlyBounce,
+    confirmed_removed_sessions: num(botSummary.confirmed_removed_sessions),
+    confirmed_likely_removed_sessions: num(
+      botSummary.confirmed_likely_removed_sessions,
+    ),
+    ai_assistant_sessions: num(botSummary.ai_assistant_sessions),
+    ai_assistant_bounce: num(botSummary.ai_assistant_bounce_rate),
   };
 }
 

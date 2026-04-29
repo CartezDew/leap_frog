@@ -1121,6 +1121,7 @@ export function runAllAnalysis(parsed, opts = {}) {
         assistant: name,
         sessions: 0,
         sources: 0,
+      engaged_sessions: 0,
         avg_engagement_time: 0,
         bounce_rate: 0,
         _bounce_numer: 0,
@@ -1132,6 +1133,7 @@ export function runAllAnalysis(parsed, opts = {}) {
     const b = aiBuckets.get(name);
     const sess = num(s.sessions, 0);
     b.sessions += sess;
+    b.engaged_sessions += num(s.engaged_sessions, 0);
     b.sources += 1;
     if (sess > 0) {
       b._bounce_numer += num(s.bounce_rate, 0) * sess;
@@ -1144,6 +1146,7 @@ export function runAllAnalysis(parsed, opts = {}) {
     .map((b) => ({
       assistant: b.assistant,
       sessions: b.sessions,
+      engaged_sessions: b.engaged_sessions,
       sources: b.sources,
       avg_engagement_time: b._eng_denom ? b._eng_numer / b._eng_denom : 0,
       bounce_rate: b._bounce_denom ? b._bounce_numer / b._bounce_denom : 0,
@@ -1161,12 +1164,26 @@ export function runAllAnalysis(parsed, opts = {}) {
   let cityLikely = 0;
   let citySuspicious = 0;
   let cityHuman = 0;
+  let cityConfirmedEngaged = 0;
+  let cityLikelyEngaged = 0;
+  let citySuspiciousEngaged = 0;
+  let cityHumanEngaged = 0;
   for (const c of cityAgg) {
     const s = num(c.sessions, 0);
-    if (c.bot_classification === 'confirmed_bot') cityConfirmed += s;
-    else if (c.bot_classification === 'likely_bot') cityLikely += s;
-    else if (c.bot_classification === 'suspicious') citySuspicious += s;
-    else cityHuman += s;
+    const engaged = num(c.engaged_sessions, 0);
+    if (c.bot_classification === 'confirmed_bot') {
+      cityConfirmed += s;
+      cityConfirmedEngaged += engaged;
+    } else if (c.bot_classification === 'likely_bot') {
+      cityLikely += s;
+      cityLikelyEngaged += engaged;
+    } else if (c.bot_classification === 'suspicious') {
+      citySuspicious += s;
+      citySuspiciousEngaged += engaged;
+    } else {
+      cityHuman += s;
+      cityHumanEngaged += engaged;
+    }
   }
 
   // ---- Session classification — by traffic source -----------------------
@@ -1200,30 +1217,63 @@ export function runAllAnalysis(parsed, opts = {}) {
   }
 
   // ---- Headline session counts ------------------------------------------
-  // Use the higher (more aggressive) detection per bucket across the two
-  // lenses so Likely / Suspicious actually populate when one view is binary.
-  // Human is the residual so the four buckets + AI sum to total sessions.
-  const totalSessionsAll =
+  // Use one real partition for session KPIs. City rows are mutually exclusive
+  // for a session, while city + source cannot be unioned from GA4 aggregates
+  // without session-level data. Source scoring stays exposed as its own lens.
+  const headlineConfirmed = cityConfirmed;
+  const headlineLikely = cityLikely;
+  const headlineSuspicious = citySuspicious;
+  const headlineHuman = cityHuman;
+  const cityClassifiedSessions =
     cityConfirmed + cityLikely + citySuspicious + cityHuman;
-  const headlineConfirmed = Math.max(cityConfirmed, srcConfirmed);
-  const headlineLikely = Math.max(cityLikely, srcLikely);
-  const headlineSuspicious = Math.max(citySuspicious, srcSuspicious);
-  const headlineHuman = Math.max(
-    0,
-    totalSessionsAll -
-      headlineConfirmed -
-      headlineLikely -
-      headlineSuspicious -
-      aiAssistantSessions,
-  );
+  const cityClassifiedEngaged =
+    cityConfirmedEngaged +
+    cityLikelyEngaged +
+    citySuspiciousEngaged +
+    cityHumanEngaged;
+  const confirmedRemovedSessions = cityClassifiedSessions - cityConfirmed;
+  const confirmedRemovedEngaged = cityClassifiedEngaged - cityConfirmedEngaged;
+  const confirmedLikelyRemovedSessions =
+    cityClassifiedSessions - cityConfirmed - cityLikely;
+  const confirmedLikelyRemovedEngaged =
+    cityClassifiedEngaged - cityConfirmedEngaged - cityLikelyEngaged;
+  const humanOnlySessions = cityHuman;
+  const humanOnlyEngaged = cityHumanEngaged;
 
   const botsPayload = {
     summary: {
-      // Headline counts (combined city + source view)
+      // Headline counts (city-level session partition)
       confirmed_bot_sessions: Math.round(headlineConfirmed),
       likely_bot_sessions: Math.round(headlineLikely),
       suspicious_sessions: Math.round(headlineSuspicious),
       human_sessions: Math.round(headlineHuman),
+      classified_sessions: Math.round(cityClassifiedSessions),
+      classified_engaged_sessions: Math.round(cityClassifiedEngaged),
+      classified_bounce_rate: calculateBounceRate(
+        cityClassifiedEngaged,
+        cityClassifiedSessions,
+      ),
+      confirmed_bot_engaged_sessions: Math.round(cityConfirmedEngaged),
+      likely_bot_engaged_sessions: Math.round(cityLikelyEngaged),
+      suspicious_engaged_sessions: Math.round(citySuspiciousEngaged),
+      human_engaged_sessions: Math.round(cityHumanEngaged),
+      confirmed_removed_sessions: Math.round(confirmedRemovedSessions),
+      confirmed_removed_engaged_sessions: Math.round(confirmedRemovedEngaged),
+      confirmed_removed_bounce_rate: calculateBounceRate(
+        confirmedRemovedEngaged,
+        confirmedRemovedSessions,
+      ),
+      confirmed_likely_removed_sessions: Math.round(confirmedLikelyRemovedSessions),
+      confirmed_likely_removed_engaged_sessions: Math.round(
+        confirmedLikelyRemovedEngaged,
+      ),
+      confirmed_likely_removed_bounce_rate: calculateBounceRate(
+        confirmedLikelyRemovedEngaged,
+        confirmedLikelyRemovedSessions,
+      ),
+      human_only_sessions: Math.round(humanOnlySessions),
+      human_only_engaged_sessions: Math.round(humanOnlyEngaged),
+      human_only_bounce_rate: calculateBounceRate(humanOnlyEngaged, humanOnlySessions),
 
       // Transparent secondary lenses — each row sums to total sessions
       city_confirmed_bot_sessions: Math.round(cityConfirmed),
@@ -1243,7 +1293,14 @@ export function runAllAnalysis(parsed, opts = {}) {
       // AI assistant traffic (ChatGPT, Claude, Gemini, Perplexity, etc.) —
       // separate category, NOT bot, NOT human-organic.
       ai_assistant_sessions: Math.round(aiAssistantSessions),
+      ai_assistant_engaged_sessions: Math.round(
+        aiAssistants.reduce((sum, a) => sum + num(a.engaged_sessions, 0), 0),
+      ),
       ai_assistant_count: aiAssistants.length,
+      ai_assistant_bounce_rate: aiAssistantSessions
+        ? aiAssistants.reduce((sum, a) => sum + num(a.bounce_rate, 0) * num(a.sessions, 0), 0) /
+          aiAssistantSessions
+        : 0,
 
       // User-ID gradient (separate measurement angle, from User sheet)
       bot_user_ids: (userSum.confirmed_bot || 0) + (userSum.likely_bot || 0),
@@ -1306,6 +1363,18 @@ export function runAllAnalysis(parsed, opts = {}) {
       num(p.sessions) >= OPPORTUNITY_MIN_SESSIONS &&
       num(p.bounce_rate) >= OPPORTUNITY_MIN_BOUNCE,
   );
+  const highReachEngagementPages = pagesSorted
+    .filter((p) => num(p.sessions) >= OPPORTUNITY_MIN_SESSIONS)
+    .map((p) => ({
+      ...p,
+      engaged_reach: num(p.engaged_sessions, 0),
+      clean_engagement_rate: safeDiv(num(p.engaged_sessions, 0), num(p.sessions, 0), 0),
+    }))
+    .sort((a, b) => {
+      const engagedDelta = num(b.engaged_reach) - num(a.engaged_reach);
+      if (engagedDelta !== 0) return engagedDelta;
+      return num(b.clean_engagement_rate) - num(a.clean_engagement_rate);
+    });
 
   let contactMonthly = [];
   if (pageRecords.length) {
@@ -1319,6 +1388,7 @@ export function runAllAnalysis(parsed, opts = {}) {
     top_pages: pagesSorted.slice(0, 25),
     all_pages_count: pagesSorted.length,
     contact_monthly: contactMonthly,
+    high_reach_engagement_pages: highReachEngagementPages.slice(0, 25),
   };
 
   const sortedUsers = [...usersDf].sort(
@@ -1361,11 +1431,14 @@ export function runAllAnalysis(parsed, opts = {}) {
   const pagesSortedWithEqs = decorateWithEqs(pagesSorted);
   const unicornsWithEqs = decorateWithEqs(unicorns);
   const opportunitiesWithEqs = decorateWithEqs(opportunities);
+  const highReachEngagementWithEqs = decorateWithEqs(highReachEngagementPages);
 
   const pagesPayloadEnriched = {
     ...pagesPayload,
     top_pages: pagesSortedWithEqs.slice(0, 25),
+    high_reach_engagement_pages: highReachEngagementWithEqs.slice(0, 25),
   };
+  bouncePayload.high_reach_engagement_pages = highReachEngagementWithEqs.slice(0, 25);
 
   const unique = runUniqueAnalytics({
     summary,

@@ -233,6 +233,16 @@ button {
   }
 }
 
+@media (min-width: 681px) {
+  .app-shell {
+    flex-direction: row;
+  }
+
+  .app-main {
+    margin-left: calc(var(--layout-gutter) + var(--sidebar-width));
+  }
+}
+
 @media (max-width: 1280px) {
   .app-content {
     padding: 32px 32px 48px;
@@ -2293,14 +2303,17 @@ input[type='file'].upload-input {
   }
 }
 
-/* Responsive layout: main column full-width when chrome stacks (see sidebar.css). */
-@media (max-width: 880px) {
-  .app-main {
-    margin-left: 0;
-    max-width: none;
+/* Responsive layout: at phone widths the sidebar collapses to an icon rail
+   on the left (see sidebar.css), so the main column simply sits beside it
+   instead of stacking below. We override --sidebar-width so the
+   margin-left/max-width math on .app-main lines up with the slim rail. */
+@media (max-width: 680px) {
+  :root {
+    --sidebar-width: var(--sidebar-width-collapsed);
   }
+
   .app-content {
-    padding: 24px 20px 40px;
+    padding: 24px 16px 40px;
   }
   .page-title {
     font-size: clamp(28px, 8vw, 40px);

@@ -4,10 +4,11 @@
 This skill defines how to ingest, classify, parse, and analyze Google Analytics 4 (GA4) data exports for a website analytics dashboard. It is designed for mid-market B2B service companies but can be adapted to any GA4 export.
 
 ## Scope
-- Parsing Excel files containing GA4 data exports
-- Auto-classifying sheets by data type (Source, Device, City, Page Path, User, Contact, Medium, Source-Medium-Device)
+- Parsing Excel files containing raw GA4 data exports
+- Auto-classifying sheets by data type (Source, Device, City, Page Path, User, Contact, Medium, Source-Medium-Device, New-Established, Consolidated Data)
+- Separating report/calculation tabs from raw calculation tabs
 - Reshaping the GA4 wide monthly format into analysis-ready long format
-- Calculating bounce rate, engagement rate, bot scores, user engagement scores
+- Calculating bounce rate, engagement rate, cleaned bot-removal bounce views, bot scores, AI/AEO source detection, and user engagement scores
 - Producing dashboard-ready aggregations for each report section
 
 ---
@@ -55,11 +56,14 @@ Read row 0 and row 1 of the sheet. Look for fingerprint columns:
 
 **Step 3 — If neither matches, flag as `unrecognized`** and present the user a dropdown to manually classify.
 
-### 1.3 Pre-built Analysis Sheets (Pass Through)
-Some uploaded files may contain pre-built analysis sheets (Executive Summary, Actionable Insights, Bounce Rate Analysis, User ID Engagement, Traffic Sources, Page Path Analysis, Unicorn Pages, Contact Form Intel, Bot Traffic Intelligence). These are display-ready summary sheets created by a prior analysis process. They should be:
-- Detected by checking if row 0, column B contains a title string with `|` separator (e.g., "BOUNCE RATE DEEP DIVE  |  Leapfrog Services 2025")
-- Stored as-is for rendering in the dashboard's corresponding section
-- NOT re-parsed through the wide monthly reshaping logic
+### 1.3 Report / Calculation Sheets (Reference Only)
+Some uploaded files may contain pre-built analysis sheets (Executive Summary, Actionable Insights, Bounce Rate Analysis, User ID Engagement, Traffic Sources, Page Path Analysis, Unicorn Pages, Contact Form Intel, Bot Traffic Intelligence). These are reference sheets created by a prior analysis process. They should be:
+- Detected before raw sheet-name matching when row 0 contains a title string with a `|` separator and a known report keyword.
+- Stored as analysis/reference material for validation or accuracy comparison.
+- NOT used to override dashboard metrics.
+- NOT re-parsed through the wide monthly reshaping logic.
+
+Raw GA4 tabs are the source of truth for dashboard calculations.
 
 ---
 
@@ -416,7 +420,9 @@ def classify_contact(text):
 - Bounce rate by channel (medium) with color coding (red > 55%, amber > 45%, green < 40%)
 - Homepage monthly bounce rate trend
 - High-traffic + high-bounce opportunity pages (sessions ≥ 100, bounce ≥ 45%)
-- Bot impact estimate on homepage bounce
+- Cleaned bounce-rate panel using city-classified bot removal
+- Highest-reach engaged pages ranked by engaged sessions
+- Note that exact page-level bot cleanup requires row-level session data tying page path to source/city
 
 ### 8.4 User ID Engagement
 **Data needed:** User sheet
@@ -457,6 +463,10 @@ def classify_contact(text):
 **Data needed:** City (with bot scores), Source (with bot scores), User (with bot scores)
 **Display:**
 - Summary tiles (confirmed bot sessions, likely bot, suspicious, clean human, bot user IDs, fractional IDs)
+- Cleaned bounce-rate explanation: confirmed-bot removal and confirmed+likely removal from the city-classified session model
+- AI/AEO traffic bucket for ChatGPT, Claude, Gemini, Perplexity, Copilot, etc.; these are not treated as spam bots
+- Measured-vs-modeled note explaining that Page Path, City, and Source are separate aggregate tabs
+- Row-level data recommendation for exact page-level bot filtering
 - City bot classification table (top 60 cities by sessions)
 - Source bot classification table
 - Bot scoring methodology explanation
