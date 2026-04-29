@@ -1,4 +1,11 @@
-import { LuFile, LuLayers, LuSparkles, LuTriangleAlert } from 'react-icons/lu';
+import {
+  LuFile,
+  LuFilePen,
+  LuLayers,
+  LuSparkles,
+  LuTrendingDown,
+  LuTriangleAlert,
+} from 'react-icons/lu';
 
 import { PageHeader } from '../components/PageHeader/PageHeader.jsx';
 import { DataTable } from '../components/DataTable/DataTable.jsx';
@@ -7,12 +14,12 @@ import { ContentMix } from '../components/ContentMix/ContentMix.jsx';
 import { ConcentrationCard } from '../components/ConcentrationCard/ConcentrationCard.jsx';
 import { StoryCards } from '../components/StoryCards/StoryCards.jsx';
 import { useData } from '../context/DataContext.jsx';
-import { eqsGrade } from '../lib/uniqueAnalytics.js';
 import {
   bounceClass,
   formatInteger,
   formatPercent,
 } from '../lib/formatters.js';
+import { summarizeAiSources } from '../lib/levers.js';
 
 const pageColumns = [
   { key: 'page', header: 'Page Path', className: 'col-strong' },
@@ -45,20 +52,6 @@ const pageColumns = [
     format: (v) => `${(v || 0).toFixed(1)}s`,
   },
   {
-    key: 'engagement_quality_score',
-    header: 'EQS',
-    align: 'right',
-    render: (row) => {
-      const grade = eqsGrade(row.engagement_quality_score || 0);
-      return (
-        <span className={`eqs-pill eqs-pill--${grade.tone}`}>
-          <strong>{row.engagement_quality_score || 0}</strong>
-          <em>{grade.grade}</em>
-        </span>
-      );
-    },
-  },
-  {
     key: 'event_count',
     header: 'Events',
     align: 'right',
@@ -77,19 +70,22 @@ function buildPageStoryCards({ analyzed }) {
   const unicornCount = (analyzed.unicorns || []).length;
   const opportunityCount = (analyzed.opportunities || []).length;
 
-  // 1. Best-performing content DNA
+  // 1. Best-performing content DNA — ranked by the underlying quality score
+  // but described to the user in plain English (lowest bounce / strongest
+  // engagement) so we never have to surface the abstract EQS number.
   const bestRole = mix
     .filter((r) => r.sessions > 0)
     .sort((a, b) => b.engagement_quality_score - a.engagement_quality_score)[0];
   if (bestRole) {
-    const grade = eqsGrade(bestRole.engagement_quality_score);
+    const bestBounce = bestRole.bounce_rate || 0;
+    const bestTone = bestBounce <= 0.35 ? 'green' : bestBounce <= 0.5 ? 'amber' : 'red';
     cards.push({
-      tone: grade.tone === 'good' ? 'green' : grade.tone === 'amber' ? 'amber' : 'red',
+      tone: bestTone,
       icon: LuSparkles,
       label: 'Strongest content DNA',
       value: bestRole.role,
-      headline: `Engagement Quality Score ${bestRole.engagement_quality_score} (${grade.grade})`,
-      caption: `${bestRole.page_count} page${bestRole.page_count === 1 ? '' : 's'} drove ${formatPercent(bestRole.session_share, 0)} of sessions at ${formatPercent(bestRole.bounce_rate, 0)} bounce.`,
+      headline: `Lowest bounce of any role at ${formatPercent(bestBounce, 0)}`,
+      caption: `${bestRole.page_count} page${bestRole.page_count === 1 ? '' : 's'} drove ${formatPercent(bestRole.session_share, 0)} of sessions and held attention for ${(bestRole.avg_engagement_time || 0).toFixed(1)}s on average.`,
     });
   }
 
@@ -103,8 +99,8 @@ function buildPageStoryCards({ analyzed }) {
       icon: LuTriangleAlert,
       label: 'Biggest fix',
       value: worstRole.role,
-      headline: `Underperforming at EQS ${worstRole.engagement_quality_score}`,
-      caption: `Bounce ${formatPercent(worstRole.bounce_rate, 0)} on ${formatInteger(worstRole.sessions)} sessions. Audit copy, layout, or CTAs across these ${worstRole.page_count} page${worstRole.page_count === 1 ? '' : 's'}.`,
+      headline: `Highest bounce of any role at ${formatPercent(worstRole.bounce_rate, 0)}`,
+      caption: `${formatInteger(worstRole.sessions)} sessions on ${worstRole.page_count} page${worstRole.page_count === 1 ? '' : 's'}. Audit copy, layout, or CTAs — this is where attention is leaking fastest.`,
     });
   }
 
@@ -170,6 +166,12 @@ export function PagePathAnalysis() {
   const pages = analyzed.pages || {};
   const unique = analyzed.unique || {};
   const storyCards = buildPageStoryCards({ analyzed });
+  const refreshCandidates = (analyzed.opportunities || []).slice(0, 5);
+  const aiSummary = summarizeAiSources(
+    analyzed.sources || [],
+    analyzed.summary?.total_sessions || 0,
+  );
+  const hasAiTraffic = aiSummary.matches.length > 0;
 
   return (
     <>
@@ -193,6 +195,12 @@ export function PagePathAnalysis() {
         subtitle="Performance grouped by page DNA — the kind of analysis GA4 leaves to humans."
       />
 
+      <h2 className="section-header">Where traffic <em>piles up</em></h2>
+      <p className="section-subhead">
+        Each card answers one question: are sessions spread across many pages or cities, or
+        concentrated in a few? Percentages are shares of <strong>all sessions</strong> in this
+        upload.
+      </p>
       <div className="card-grid card-grid--cols-2">
         {unique.concentration?.pages && (
           <ConcentrationCard
@@ -210,11 +218,66 @@ export function PagePathAnalysis() {
         )}
       </div>
 
+      <h2 className="section-header">
+        Refresh <em>candidates</em>
+        <span className="section-header__hint">
+          <LuTrendingDown size={14} aria-hidden="true" /> action list
+        </span>
+      </h2>
+      <p className="section-subhead">
+        High-traffic pages bleeding engagement. Rewrite the intro and add a clear next step
+        on these first.
+      </p>
+      <article className="lever-card lever-card--alert lever-card--list">
+        <header className="lever-card__head">
+          <span className="lever-card__icon" aria-hidden="true">
+            <LuFilePen size={18} />
+          </span>
+          <h3 className="lever-card__title">Pages to refresh first</h3>
+          <span className="lever-card__hint">
+            <LuTrendingDown size={14} aria-hidden="true" /> high-traffic, high-bounce
+          </span>
+        </header>
+        <p className="lever-card__body">
+          Pages with <strong>≥ 100 sessions</strong> and a <strong>bounce rate ≥ 45%</strong>
+          {' '}— visitors land but don't engage. Common causes: search-intent mismatch, weak
+          hook above the fold, missing CTA, or content that's gone stale.
+        </p>
+        {hasAiTraffic && (
+          <p className="lever-card__body lever-card__body--note">
+            <strong>AI-traffic caveat:</strong> with{' '}
+            {formatInteger(aiSummary.total_sessions)} sessions from AI assistants this period,
+            some bounce here may be ChatGPT/Perplexity/Claude reading the page and citing it
+            — not a content problem. Cross-reference with the AI search visibility section on
+            the Traffic Sources page before rewriting.
+          </p>
+        )}
+        {refreshCandidates.length === 0 ? (
+          <p className="muted">No high-bounce opportunities flagged.</p>
+        ) : (
+          <ul className="lever-list">
+            {refreshCandidates.map((p) => (
+              <li key={p.page}>
+                <span className="lever-list__primary" title={p.page}>
+                  {p.page}
+                </span>
+                <span className="lever-list__meta">
+                  <strong>{formatInteger(p.sessions)}</strong> sessions ·{' '}
+                  <span className="bounce-high">{formatPercent(p.bounce_rate, 1)}</span>{' '}
+                  bounce
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </article>
+
       <h2 className="section-header">Top 25 <em>pages</em></h2>
       <DataTable
         columns={pageColumns}
         rows={pages.top_pages || []}
         emptyMessage="Page path data not provided in this upload."
+        defaultSort={{ key: 'sessions', dir: 'desc' }}
       />
 
       <h2 className="section-header">Contact page monthly <em>performance</em></h2>

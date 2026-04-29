@@ -87,11 +87,12 @@ export function UploadZone() {
           ? 'Adding to batch…'
           : analyzeStatus === 'analyzing'
             ? 'Analyzing batch…'
-            : 'Drop GA4 Excel exports here'}
+            : 'Drop GA4 & Semrush Excel files here'}
       </h2>
       <p className="upload-zone__sub">
-        <LuFileSpreadsheet size={14} /> .xlsx or .xls — drop one or many. The
-        analyzer runs once on the merged batch (50 MB combined max).
+        <LuFileSpreadsheet size={14} /> .xlsx or .xls — GA4 exports and Semrush
+        reports. Drop one or many; the analyzer runs once on the merged batch
+        (50 MB combined max).
       </p>
       {!busy && (
         <button

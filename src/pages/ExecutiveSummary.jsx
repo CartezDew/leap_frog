@@ -16,17 +16,18 @@ import { PageHeader } from '../components/PageHeader/PageHeader.jsx';
 import { KpiStrip } from '../components/KpiStrip/KpiStrip.jsx';
 import { ChartWrapper } from '../components/ChartWrapper/ChartWrapper.jsx';
 import { EmptyState } from '../components/EmptyState/EmptyState.jsx';
-import { PriorityBadge } from '../components/StatusBadge/StatusBadge.jsx';
 import { TrustScore } from '../components/TrustScore/TrustScore.jsx';
 import { AnomalyList } from '../components/AnomalyList/AnomalyList.jsx';
 import { AccuracyCheck } from '../components/AccuracyCheck/AccuracyCheck.jsx';
+import { TopInsightsTable } from '../components/TopInsightsTable/TopInsightsTable.jsx';
+import { BotAlertBanner } from '../components/BotAlertBanner/BotAlertBanner.jsx';
 import { useData } from '../context/DataContext.jsx';
 
 export function ExecutiveSummary() {
   const { hasData, analyzed, filename, uploadedAt } = useData();
   if (!hasData || !analyzed) return <EmptyState />;
 
-  const { summary, monthly, insights, verification, unique, accuracy } = analyzed;
+  const { summary, monthly, insights, verification, unique, accuracy, bots } = analyzed;
   const trust = unique?.trust;
   const anomalies = unique?.anomalies;
   const syncedLabel = uploadedAt
@@ -70,6 +71,12 @@ export function ExecutiveSummary() {
         }
       />
 
+      <BotAlertBanner
+        bots={bots}
+        totalSessions={summary?.total_sessions || 0}
+        variant="subtle"
+      />
+
       {verifyIssueCount > 0 && (
         <div
           className={`exec-verify-banner exec-verify-banner--${
@@ -89,21 +96,20 @@ export function ExecutiveSummary() {
                     verifyWarns.length === 1 ? '' : 's'
                   }.`}
             </strong>{' '}
-            Different sheets in your workbook report different totals for the
-            same period. See the accuracy matrix below — it shows which sheet
-            each KPI was computed from and where independent calculations
-            agree or disagree.{' '}
+            Different sheets in your workbook (and any hand-typed totals on
+            your "Executive Summary" tabs) report different numbers for the
+            same period. Scroll to the calculation accuracy check at the
+            bottom to see which sheet each KPI comes from and where things
+            disagree.{' '}
             <Link to="/upload">Open the full validation report →</Link>
           </div>
         </div>
       )}
 
+      {/* ===== 1. Key performance metrics =================================== */}
       <KpiStrip summary={summary} year={summary.report_year} />
 
-      {accuracy && <AccuracyCheck accuracy={accuracy} />}
-
-      {trust && <TrustScore trust={trust} />}
-
+      {/* ===== 2. Monthly trend + volatility ================================ */}
       <h2 className="section-header">
         Monthly <em>trend</em>
       </h2>
@@ -156,20 +162,22 @@ export function ExecutiveSummary() {
         )}
       </div>
 
+      {/* ===== 3. Top 10 dynamic insights =================================== */}
       <h2 className="section-header">
-        Top <em>insights</em>
+        Top 10 <em>key insights</em> from the data
       </h2>
-      <div className="card-grid">
-        {(insights || []).slice(0, 6).map((ins, i) => (
-          <div key={i} className={`insight insight--${ins.priority || 'info'}`}>
-            <div className="insight__head">
-              <h3 className="insight__title">{ins.title}</h3>
-              <PriorityBadge priority={ins.priority} />
-            </div>
-            <p className="insight__evidence">{ins.evidence}</p>
-          </div>
-        ))}
-      </div>
+      <p className="section-subhead">
+        Auto-generated from this upload — every row is interpolated from your
+        live numbers, so a different file will produce a different list.
+        Priority pills show the recommended action category.
+      </p>
+      <TopInsightsTable insights={insights} />
+
+      {/* ===== 4. Data trust score ========================================== */}
+      {trust && <TrustScore trust={trust} />}
+
+      {/* ===== 5. Calculation accuracy (bottom — audit panel) =============== */}
+      {accuracy && <AccuracyCheck accuracy={accuracy} />}
     </>
   );
 }

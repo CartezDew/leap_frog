@@ -1,14 +1,23 @@
-// Top navigation bar with three primary tabs: About, Overview, Home Page.
+// Top navigation bar: About, Overview (or Get Started).
 //
 // - "Overview" routes to the executive summary view, but only once data has
 //   been uploaded. Until then, the same tab control reads "Get Started" and
 //   sends users to the upload flow.
 // - Below 580px the inline tabs collapse into a hamburger-driven dropdown
 //   menu, controlled entirely with state + a media-query-aware stylesheet.
+// - Page-level "Growth Lever" insights (warm prospects, channel quality,
+//   AI search visibility, refresh candidates, bot impact) are woven into the
+//   relevant analysis pages on the sidebar — no separate page needed.
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { LuMenu, LuX, LuInfo, LuCompass, LuRocket, LuHouse } from 'react-icons/lu';
+import {
+  LuMenu,
+  LuX,
+  LuInfo,
+  LuCompass,
+  LuRocket,
+} from 'react-icons/lu';
 
 import { useData } from '../../context/DataContext.jsx';
 import mainLogo from '../../images/Main_Logo.webp';
@@ -47,7 +56,6 @@ export function Topbar() {
     : { to: '/upload', label: 'Get Started', icon: LuRocket };
 
   const items = [
-    { to: '/', label: 'Home Page', icon: LuHouse, end: true },
     { to: '/about', label: 'About', icon: LuInfo },
     { ...overview, end: false, isOverview: true },
   ];

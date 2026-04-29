@@ -1,5 +1,6 @@
 import {
   Cell,
+  Legend,
   Pie,
   PieChart,
   Tooltip,
@@ -14,15 +15,81 @@ import { QualityQuadrant } from '../components/QualityQuadrant/QualityQuadrant.j
 import { ConcentrationCard } from '../components/ConcentrationCard/ConcentrationCard.jsx';
 import { StoryCards } from '../components/StoryCards/StoryCards.jsx';
 import { useData } from '../context/DataContext.jsx';
-import { eqsGrade } from '../lib/uniqueAnalytics.js';
 import {
   bounceClass,
   formatInteger,
   formatPercent,
 } from '../lib/formatters.js';
-import { LuShieldAlert, LuTrendingUp, LuLayers, LuGoal } from 'react-icons/lu';
+import {
+  LuShieldAlert,
+  LuTrendingUp,
+  LuLayers,
+  LuGoal,
+  LuBrainCircuit,
+} from 'react-icons/lu';
+
+import { rankChannels, summarizeAiSources } from '../lib/levers.js';
+import { formatSeconds } from '../lib/formatters.js';
 
 const DEVICE_COLORS = ['#522e91', '#9aca3c', '#d97706', '#2563eb', '#dc2626'];
+
+// Skip label rendering altogether for tiny slices (e.g. tablet at 1%, smart
+// tv at 0%) so they don't pile up on top of each other near the edge of the
+// donut. Those entries still appear in the legend below the chart.
+const DEVICE_LABEL_THRESHOLD = 0.04;
+
+function renderDeviceLabel({
+  cx,
+  cy,
+  midAngle,
+  outerRadius,
+  percent,
+  name,
+}) {
+  if (percent < DEVICE_LABEL_THRESHOLD) return null;
+  const RADIAN = Math.PI / 180;
+  const radius = outerRadius + 18;
+  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+  return (
+    <text
+      x={x}
+      y={y}
+      fill="#522e91"
+      fontSize={12}
+      fontWeight={600}
+      textAnchor={x > cx ? 'start' : 'end'}
+      dominantBaseline="central"
+    >
+      {`${name}: ${(percent * 100).toFixed(0)}%`}
+    </text>
+  );
+}
+
+function renderDeviceLabelLine(props) {
+  const { points, percent } = props;
+  if (percent < DEVICE_LABEL_THRESHOLD || !points || points.length < 2) {
+    return null;
+  }
+  const [p1, p2] = points;
+  return (
+    <polyline
+      points={`${p1.x},${p1.y} ${p2.x},${p2.y}`}
+      stroke="#c9b8e0"
+      strokeWidth={1}
+      fill="none"
+    />
+  );
+}
+
+// Cleanest → dirtiest, used to sort badge columns whose displayed value is
+// `bot_classification` (which is otherwise just an opaque string).
+const BOT_RANK = {
+  human: 0,
+  suspicious: 1,
+  likely_bot: 2,
+  confirmed_bot: 3,
+};
 
 const sourceColumns = [
   { key: 'source', header: 'Source', className: 'col-strong' },
@@ -45,28 +112,16 @@ const sourceColumns = [
     format: (v) => formatPercent(v),
   },
   {
-    key: 'engagement_quality_score',
-    header: 'EQS',
-    align: 'right',
-    render: (row) => {
-      const grade = eqsGrade(row.engagement_quality_score || 0);
-      return (
-        <span className={`eqs-pill eqs-pill--${grade.tone}`}>
-          <strong>{row.engagement_quality_score || 0}</strong>
-          <em>{grade.grade}</em>
-        </span>
-      );
-    },
-  },
-  {
     key: 'tier',
     header: 'Bounce Tier',
     render: (row) => <BounceBadge value={row.bounce_rate} />,
+    sortValue: (row) => row.bounce_rate,
   },
   {
     key: 'bot',
     header: 'Bot Class',
     render: (row) => <BotBadge classification={row.bot_classification} />,
+    sortValue: (row) => BOT_RANK[row.bot_classification] ?? -1,
   },
 ];
 
@@ -89,7 +144,7 @@ function buildSourceStoryCards({ sources, quadrant, concentration }) {
       : 'No channel currently meets the premium bar',
     caption: premium.length > 0
       ? `Top: ${premium.slice(0, 3).map((p) => p.name).join(', ')}.`
-      : 'Premium = above-median volume AND above-median engagement quality.',
+      : 'Premium = above-median volume AND above-median engagement.',
   });
 
   // 2. Volume Leaks (the biggest fix)
@@ -122,7 +177,7 @@ function buildSourceStoryCards({ sources, quadrant, concentration }) {
       : 'No low-volume channels are showing standout engagement',
     caption: scale.length
       ? `Worth doubling down: ${scale.slice(0, 3).map((p) => p.name).join(', ')}.`
-      : 'High EQS at low volume = candidates for paid lift or SEO investment.',
+      : 'Strong engagement at low volume = candidates for paid lift or SEO investment.',
   });
 
   // 4. Concentration risk
@@ -174,6 +229,7 @@ const cityColumns = [
     key: 'bot',
     header: 'Classification',
     render: (row) => <BotBadge classification={row.bot_classification} />,
+    sortValue: (row) => BOT_RANK[row.bot_classification] ?? -1,
   },
 ];
 
@@ -187,13 +243,19 @@ export function TrafficSources() {
   const unique = analyzed.unique || {};
   const sourceQuadrant = unique.source_quadrant;
   const concentration = unique.concentration;
+  const totalSiteSessions = analyzed.summary?.total_sessions || 0;
+  const channelLeaders = rankChannels(sources, 6);
+  const aiSummary = summarizeAiSources(sources, totalSiteSessions);
+  const hasAiTraffic = aiSummary.matches.length > 0;
 
   const totalDeviceSessions = devices.reduce((acc, d) => acc + (d.sessions || 0), 0);
-  const deviceData = devices.map((d) => ({
-    name: d.device,
-    value: d.sessions || 0,
-    pct: totalDeviceSessions ? (d.sessions / totalDeviceSessions) * 100 : 0,
-  }));
+  const deviceData = devices
+    .filter((d) => (d.sessions || 0) > 0)
+    .map((d) => ({
+      name: d.device,
+      value: d.sessions || 0,
+      pct: totalDeviceSessions ? (d.sessions / totalDeviceSessions) * 100 : 0,
+    }));
 
   const storyCards = buildSourceStoryCards({
     sources,
@@ -230,29 +292,151 @@ export function TrafficSources() {
         dimLabel="source"
       />
 
+      {channelLeaders.length > 0 && (
+        <>
+          <h2 className="section-header">
+            Channel <em>quality leaderboard</em>
+            <span className="section-header__hint">
+              <LuTrendingUp size={14} aria-hidden="true" /> action list
+            </span>
+          </h2>
+          <p className="section-subhead">
+            Top sources ranked by <strong>volume × engagement × time-on-site</strong>,
+            excluding confirmed bots and AI assistants. Use the action column to decide
+            where to spend marketing hours next week.
+          </p>
+          <div className="card lever-table-card">
+            <div className="table-scroll">
+              <table className="datatable">
+                <thead>
+                  <tr>
+                    <th>Source</th>
+                    <th className="num">Sessions</th>
+                    <th className="num">Engagement</th>
+                    <th className="num">Avg time</th>
+                    <th className="num">Quality</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {channelLeaders.map((row, idx) => (
+                    <tr key={`${row.source}-${idx}`}>
+                      <td>{row.source || '(unknown)'}</td>
+                      <td className="num">{formatInteger(row.sessions)}</td>
+                      <td className="num">{formatPercent(row.engagement_rate, 1)}</td>
+                      <td className="num">{formatSeconds(row.avg_engagement_time)}</td>
+                      <td className="num">
+                        <progress
+                          className="lever-quality-bar"
+                          value={Math.round(row.quality_index * 100)}
+                          max={100}
+                          aria-label={`Quality index ${(row.quality_index * 100).toFixed(0)} of 100`}
+                        />
+                      </td>
+                      <td>
+                        <span className={`lever-pill lever-pill--${row.action.tone}`}>
+                          {row.action.label}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      <h2 className="section-header">
+        AI search <em>visibility</em>
+        <span className="section-header__hint">
+          <LuBrainCircuit size={14} aria-hidden="true" /> emerging channel
+        </span>
+      </h2>
+      <p className="section-subhead">
+        Sessions referred by AI assistants (ChatGPT, Perplexity, Claude, Copilot, etc.).
+        These visits read content and leave without converting — high bounce here is{' '}
+        <strong>expected</strong>, not a problem. They're separated from the leaderboard
+        above so they don't drag down quality scores.
+      </p>
+      <article className="lever-card lever-card--info lever-card--list">
+        <header className="lever-card__head">
+          <span className="lever-card__icon" aria-hidden="true">
+            <LuBrainCircuit size={18} />
+          </span>
+          <h3 className="lever-card__title">
+            {hasAiTraffic
+              ? 'AI assistants citing your content'
+              : 'No AI assistant referrals detected'}
+          </h3>
+          {hasAiTraffic && (
+            <span className="lever-card__hint">
+              {formatInteger(aiSummary.total_sessions)} sessions ·{' '}
+              {formatPercent(aiSummary.site_share, 2)} of site
+            </span>
+          )}
+        </header>
+        {hasAiTraffic ? (
+          <>
+            <ul className="lever-list">
+              {aiSummary.matches.map((row) => (
+                <li key={row.source}>
+                  <span className="lever-list__primary" title={row.source}>
+                    {row.assistant}{' '}
+                    <span className="muted">· {row.source}</span>
+                  </span>
+                  <span className="lever-list__meta">
+                    <strong>{formatInteger(row.sessions)}</strong> sessions ·{' '}
+                    {formatPercent(row.bounce_rate, 1)} bounce ·{' '}
+                    {formatSeconds(row.avg_engagement_time)} avg time
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="lever-card__body">
+              <strong>What to do:</strong> if these volumes grow, audit which pages are
+              being cited and add structured data (FAQ, HowTo, breadcrumbs) plus a clear
+              CTA above the fold — that's how AI-referred readers convert.
+            </p>
+          </>
+        ) : (
+          <p className="lever-card__body">
+            None of your top sources match known AI assistants right now. Worth re-checking
+            next quarter — AI-referred traffic is the fastest-growing referrer category in
+            B2B SaaS, and it shows up as <em>chatgpt.com</em>, <em>perplexity.ai</em>,{' '}
+            <em>claude.ai</em>, etc. in your GA4 source list.
+          </p>
+        )}
+      </article>
+
       <h2 className="section-header">Top <em>sources</em></h2>
       <DataTable
         columns={sourceColumns}
         rows={sources.slice(0, 25)}
-        hint={`${sources.length} total sources`}
+        hint={`${formatInteger(sources.length)} total sources`}
+        defaultSort={{ key: 'sessions', dir: 'desc' }}
       />
 
-      <div className="card-grid card-grid--cols-2">
-        <div>
+      <div className="card-grid card-grid--cols-2 sources-charts">
+        <div className="sources-charts__cell">
           <h2 className="section-header">Device <em>breakdown</em></h2>
           {deviceData.length === 0 ? (
             <div className="empty-state">No device data available.</div>
           ) : (
-            <ChartWrapper height={260}>
-              <PieChart>
+            <ChartWrapper height={300}>
+              <PieChart margin={{ top: 8, right: 24, bottom: 8, left: 24 }}>
                 <Pie
                   data={deviceData}
                   dataKey="value"
                   nameKey="name"
-                  innerRadius={60}
-                  outerRadius={90}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={58}
+                  outerRadius={88}
                   paddingAngle={2}
-                  label={(entry) => `${entry.name}: ${entry.pct.toFixed(0)}%`}
+                  minAngle={3}
+                  labelLine={renderDeviceLabelLine}
+                  label={renderDeviceLabel}
                 >
                   {deviceData.map((_, idx) => (
                     <Cell key={idx} fill={DEVICE_COLORS[idx % DEVICE_COLORS.length]} />
@@ -261,12 +445,26 @@ export function TrafficSources() {
                 <Tooltip
                   formatter={(value, name) => [formatInteger(value), name]}
                 />
+                <Legend
+                  verticalAlign="bottom"
+                  align="center"
+                  iconType="circle"
+                  wrapperStyle={{ paddingTop: 12, fontSize: 12 }}
+                  formatter={(value, entry) => {
+                    const pct = entry?.payload?.pct ?? 0;
+                    return `${value} · ${pct.toFixed(pct < 1 ? 1 : 0)}%`;
+                  }}
+                />
               </PieChart>
             </ChartWrapper>
           )}
         </div>
-        <div>
-          <h2 className="section-header">City <em>concentration</em></h2>
+        <div className="sources-charts__cell">
+          <h2 className="section-header">City <em>spread</em></h2>
+          <p className="section-subhead">
+            Shows whether sessions pile into one metro or stay spread across many cities — every
+            value is a share of <strong>sessions</strong> by city in this file.
+          </p>
           {concentration?.cities && (
             <ConcentrationCard
               title="City traffic concentration"
@@ -282,6 +480,7 @@ export function TrafficSources() {
         columns={cityColumns}
         rows={cities.slice(0, 20)}
         hint={`Top 20 by sessions of ${cities.length} cities`}
+        defaultSort={{ key: 'sessions', dir: 'desc' }}
       />
     </>
   );

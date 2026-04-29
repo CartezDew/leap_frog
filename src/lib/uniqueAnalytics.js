@@ -307,9 +307,34 @@ function factorLabel(key) {
 //     1500–2500 moderately concentrated
 //     > 2500   highly concentrated / dependency risk
 
-export function concentration(rows, key = 'sessions') {
+function concentrationRowLabel(row, measureKey, labelKey) {
+  if (labelKey && row[labelKey] != null && String(row[labelKey]).trim()) {
+    return String(row[labelKey]).trim();
+  }
+  const k = Object.keys(row).find(
+    (col) =>
+      col !== measureKey &&
+      typeof row[col] === 'string' &&
+      String(row[col]).trim(),
+  );
+  return k ? String(row[k]).trim() : null;
+}
+
+/** @param {string} [labelKey] — dimension column for top-1 name (e.g. `city`, `source`, `page`). */
+export function concentration(rows, key = 'sessions', labelKey = null) {
   if (!Array.isArray(rows) || rows.length === 0) {
-    return { count: 0, total: 0, hhi: 0, effective: 0, top1: 0, top3: 0, top5: 0, top10: 0, top1_name: null, label: 'No data' };
+    return {
+      count: 0,
+      total: 0,
+      hhi: 0,
+      effective: 0,
+      top1: 0,
+      top3: 0,
+      top5: 0,
+      top10: 0,
+      top1_name: null,
+      label: 'No data',
+    };
   }
   const total = rows.reduce((acc, r) => acc + num(r[key]), 0) || 1;
   const sorted = [...rows].sort((a, b) => num(b[key]) - num(a[key]));
@@ -324,6 +349,8 @@ export function concentration(rows, key = 'sessions') {
   else if (hhi < 2500) label = 'Moderately concentrated';
   else label = 'Highly concentrated';
 
+  const top1_name = sorted[0] ? concentrationRowLabel(sorted[0], key, labelKey) : null;
+
   return {
     count: rows.length,
     total: Math.round(total),
@@ -333,7 +360,7 @@ export function concentration(rows, key = 'sessions') {
     top3: slice(3),
     top5: slice(5),
     top10: slice(10),
-    top1_name: sorted[0]?.[Object.keys(sorted[0]).find((k) => k !== key && typeof sorted[0][k] === 'string')] || null,
+    top1_name,
     label,
   };
 }
@@ -539,9 +566,9 @@ export function runUniqueAnalytics({
   const sourceQuadrant = channelQuadrant(sourcesWithEqs, 'source');
   const deviceQuadrant = channelQuadrant(devicesWithEqs, 'device');
   const sessionConcentration = {
-    pages: concentration(pagesWithEqs, 'sessions'),
-    sources: concentration(sourcesWithEqs, 'sessions'),
-    cities: concentration(citiesWithEqs, 'sessions'),
+    pages: concentration(pagesWithEqs, 'sessions', 'page'),
+    sources: concentration(sourcesWithEqs, 'sessions', 'source'),
+    cities: concentration(citiesWithEqs, 'sessions', 'city'),
   };
   const mix = contentMix(pagesWithEqs);
   const anomalies = detectMonthlyAnomalies(monthly);

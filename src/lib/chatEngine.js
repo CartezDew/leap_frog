@@ -1342,7 +1342,7 @@ function answerCompare(q, analyzed) {
 }
 
 // ---------------------------------------------------------------------------
-// Intent: insights (the curated list from analyzer.generateInsights)
+// Intent: insights (the curated top-10 list from analyzer / insightEngine)
 // ---------------------------------------------------------------------------
 
 function intentInsights(q) {
@@ -1368,7 +1368,7 @@ function answerInsights(_q, analyzed) {
       `Top **${Math.min(ins.length, 6)}** insights from your data:\n\n` +
       ins
         .slice(0, 6)
-        .map((i, idx) => `**${idx + 1}. ${i.title}**\n${i.description || ''}`)
+        .map((i, idx) => `**${idx + 1}. ${i.title}**\n${i.evidence || i.description || ''}`)
         .join('\n\n'),
     source: 'data',
     intent: 'insights',

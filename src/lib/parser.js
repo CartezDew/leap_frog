@@ -764,8 +764,17 @@ export function parseWorkbookGrids(grids, filename = '') {
       try {
         const { records, warnings: w } = readContactSheet(grid);
         warnings.push(...w);
+        // Some workbooks ship both a raw `Contact` sheet AND an analyst's
+        // narrative report named "Contact Form Intel". Both pass header
+        // detection, but the report sheet is mostly summary text with empty
+        // contact fields. Pick the sheet with the most records that have a
+        // real `how_can_we_help` message — not just the longest grid.
+        const isValid = (r) =>
+          r && String(r.how_can_we_help || '').trim().length > 0;
+        const validCount = records.filter(isValid).length;
         const existing = parsed.contact || [];
-        if (records.length >= existing.length) parsed.contact = records;
+        const existingValid = existing.filter(isValid).length;
+        if (validCount > existingValid) parsed.contact = records;
       } catch (err) {
         warnings.push(`Failed to parse Contact sheet '${sheetName}': ${err.message}`);
       }

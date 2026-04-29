@@ -27,7 +27,7 @@ export function UploadPage() {
       <PageHeader
         badge="Browser-side parsing"
         title="Upload Data"
-        subtitle="Add as many GA4 exports as you'd like — drag-drop or pick from the Upload DATA/ folder — then run the analysis on the whole batch."
+        subtitle="Add GA4 property exports and Semrush Excel reports — drag-drop or pick from the Upload DATA/ folder — then run analysis on the whole batch."
       />
 
       {error && <div className="error-banner">{error}</div>}

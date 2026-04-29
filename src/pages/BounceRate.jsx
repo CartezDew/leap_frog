@@ -64,6 +64,7 @@ const channelColumns = [
     key: 'tier',
     header: 'Assessment',
     render: (row) => <BounceBadge value={row.bounce_rate} />,
+    sortValue: (row) => row.bounce_rate,
   },
 ];
 
@@ -243,6 +244,7 @@ export function BounceRate() {
         columns={channelColumns}
         rows={bounce.by_channel || []}
         emptyMessage="Medium data not provided in this upload."
+        defaultSort={{ key: 'sessions', dir: 'desc' }}
       />
 
       {homepage.length > 0 && (
@@ -286,15 +288,31 @@ export function BounceRate() {
         </>
       )}
 
-      <h2 className="section-header">High-bounce opportunity <em>pages</em></h2>
+      <h2 className="section-header">Pages with <em>high</em> bounce</h2>
       <p className="section-subhead">
-        Sessions ≥ 100 and bounce ≥ 45% — strong candidates for CTAs, internal links,
-        or content rewrites.
+        High-traffic pages where most visitors leave on arrival
+        (<strong>≥ 100 sessions</strong> and <strong>bounce ≥ 45%</strong>).
+        Strong candidates for CTAs, internal links, or content rewrites.
       </p>
       <DataTable
         columns={opportunityColumns}
         rows={bounce.high_bounce_opportunities || []}
         emptyMessage="No high-traffic, high-bounce pages — congrats."
+        defaultSort={{ key: 'bounce_rate', dir: 'desc' }}
+      />
+
+      <h2 className="section-header">Pages with <em>low</em> bounce</h2>
+      <p className="section-subhead">
+        High-traffic pages that hold visitors' attention
+        (<strong>≥ 100 sessions</strong> and <strong>bounce ≤ 25%</strong>).
+        Mine the messaging, layout, and CTAs from these and reuse them on the
+        weaker pages above.
+      </p>
+      <DataTable
+        columns={opportunityColumns}
+        rows={analyzed.unicorns || []}
+        emptyMessage="No high-traffic, low-bounce pages detected yet."
+        defaultSort={{ key: 'bounce_rate', dir: 'asc' }}
       />
     </>
   );

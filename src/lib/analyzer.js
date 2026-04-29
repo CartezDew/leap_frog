@@ -32,6 +32,7 @@ import { runVerifier } from './verifier.js';
 import { runAccuracyCheck } from './accuracyCheck.js';
 import { decorateWithEqs, runUniqueAnalytics } from './uniqueAnalytics.js';
 import { runBounceBenchmark } from './bounceBenchmark.js';
+import { buildTopInsights } from './insightEngine.js';
 
 // ---------------------------------------------------------------------------
 // Generic helpers
@@ -188,54 +189,182 @@ export function assignPersona(row) {
 // Contact classification (SKILL.md 7)
 // ---------------------------------------------------------------------------
 
+// Lead categories surfaced on the Contact Form Intel dashboard. Order matters
+// for downstream display fall-throughs, but lookups are by name.
+export const CONTACT_LEAD_TYPES = [
+  'Sales Lead',
+  'Partnership',
+  'Spam',
+  'Support Request',
+  'Job Seeker',
+  'Event / Conference',
+  'Needs Review',
+  'Unknown',
+];
+
 export function classifyContact(text) {
   if (text === null || text === undefined) return 'Unknown';
   if (typeof text === 'number' && Number.isNaN(text)) return 'Unknown';
   const t = String(text).toLowerCase();
   if (!t.trim()) return 'Unknown';
 
+  // ----- Spam / Irrelevant — only the clearly off-topic, automated-feeling
+  // pitches (crypto wallets, link-farming, "buy your business" cold pitches,
+  // staffing-industry cold outreach). Vendor outreach with a real product is
+  // routed to the Partnership / Vendor bucket below.
+  const spam = [
+    'wikipedia',
+    'staffing industry',
+    'cold outreach',
+    'business broker',
+    'selling your business',
+    'sell your business',
+    'seo services',
+    'crypto wallet',
+    'develop our own crypto',
+    'eliminate thousands in credit card',
+    'cleaning quote that meets your company',
+    'complimentary clean',
+  ];
+  if (spam.some((k) => t.includes(k))) return 'Spam';
+
+  // ----- Existing-client / support — keep above Sales Lead because some
+  // support tickets mention services in passing.
+  const support = [
+    'bitlocker',
+    'bit lock',
+    'citrix',
+    'network error',
+    'unstable network',
+    'poor network',
+    'video calls',
+    'cannot pin point',
+    'no longer with the company',
+    'launch tessitura',
+    'auto-detection',
+    'remove this',
+    'login to',
+    'unable to launch',
+  ];
+  if (support.some((k) => t.includes(k))) return 'Support Request';
+
+  // ----- Job seeker / HR. Use specific phrases — `position` and `career`
+  // alone are far too broad (they match "career group", "position brands",
+  // etc. in vendor pitches).
+  const jobs = [
+    'missed an interview',
+    'scheduled an interview',
+    'interview with',
+    'send my resume',
+    'attached my resume',
+    'apply for a position',
+    'open position',
+    'job opportunity',
+    'looking for a job',
+    'looking for employment',
+    'career opportunity',
+    'employment opportunity',
+    'maureen coyle',
+  ];
+  if (jobs.some((k) => t.includes(k))) return 'Job Seeker';
+
+  // ----- Event / Conference / sponsorship outreach.
+  const events = [
+    'conference',
+    'sponsorship',
+    'sponsor',
+    'speaking opportunity',
+    'guest speaker',
+    'frontline of a global',
+    'cybersecurity has moved beyond',
+  ];
+  if (events.some((k) => t.includes(k))) return 'Event / Conference';
+
+  // ----- Partnership / Vendor Inquiry — collaboration language plus vendor
+  // outreach (cleaning services, payment processors, MDM, lead-gen vendors,
+  // consultants pitching their services to us).
+  const partnership = [
+    'strategic partnership',
+    'partnership',
+    'potential partnership',
+    'explore a potential',
+    'explore a potential collaboration',
+    'collaboration',
+    'subcontract',
+    'reseller',
+    'channel partner',
+    'mutual referral',
+    'meeting facilitator',
+    'consulting team to facilitate',
+    'it hardware products',
+    'trusted partner',
+    'managed it services to genesis',
+    'business development, and sales growth',
+    'mobile device',
+    'lead generation',
+    'cleaning',
+    'janitorial',
+    'payment processing',
+    'credit card processing',
+    'merchant services',
+    'cloud consulting firms often need',
+    'we provide mobile device',
+    'system4 of nashville',
+    'we would like to purchase a few products',
+    'purchase a few products from a list',
+  ];
+  if (partnership.some((k) => t.includes(k))) return 'Partnership';
+
+  // ----- Sales Lead — IT services, managed services, cybersecurity intent.
   const sales = [
     'msp',
+    'mmsp',
     'managed it',
     'managed service',
     'outsourc',
     'it support',
+    'it consultant',
+    'it consultants',
     'cybersecurity service',
+    'cybersecurity services',
+    'cybersecurity and it',
+    'cybersecurity & it',
     'cmmc',
+    'cmmc compliance',
     'microsoft 365',
+    'm365',
     'help desk',
     'it service',
+    'it services',
+    'voip',
+    'cloud migration',
+    'switch over',
+    'swap over',
+    'replace our current',
+    'transition our it',
+    'transitioning our it',
+    'quote and detail',
+    'quote',
+    'need cmmc',
+    'outgrown our current',
+    'we are seeking a firm',
+    'looking for a quote',
+    'request a quote',
+    'looking for an msp',
+    'purchasing it services',
+    'it & cybersecurity',
+    'looking to replace',
   ];
   if (sales.some((k) => t.includes(k))) return 'Sales Lead';
 
-  if (['partner', 'collaboration', 'subcontract'].some((k) => t.includes(k))) {
-    return 'Partnership';
-  }
-
-  const spam = [
-    'cleaning',
-    'janitorial',
-    'payment processing',
-    'wikipedia',
-    'staffing',
-    'spam',
-  ];
-  if (spam.some((k) => t.includes(k))) return 'Spam';
-
-  if (['interview', 'job', 'resume', 'career', 'position'].some((k) => t.includes(k))) {
-    return 'Job Seeker';
-  }
-
+  // ----- Lighter-weight sales intent ("interested in services" etc.).
   if (
-    ['bitlocker', 'citrix', 'network error', 'unstable'].some((k) => t.includes(k))
-  ) {
-    return 'Support Request';
-  }
-
-  if (
-    ['interested in services', 'looking to get started', 'it & cyber'].some((k) =>
-      t.includes(k),
-    )
+    [
+      'interested in services',
+      'interested in your services',
+      'looking to get started',
+      'interested in discussing services',
+    ].some((k) => t.includes(k))
   ) {
     return 'Sales Lead';
   }
@@ -489,7 +618,22 @@ function classifyContactRecords(records) {
 }
 
 function contactSummary(records) {
-  if (!records || records.length === 0) return { total: 0, by_type: {}, by_pct: {} };
+  if (!records || records.length === 0) {
+    return {
+      total: 0,
+      by_type: {},
+      by_pct: {},
+      qualified: 0,
+      qualified_pct: 0,
+      noise: 0,
+      noise_pct: 0,
+      by_entry_page: [],
+      monthly: [],
+      service_interest: [],
+      duplicates: { groups: 0, total_dupes: 0 },
+      window: null,
+    };
+  }
   const counter = new Map();
   for (const r of records) {
     const k = r.lead_type || 'Unknown';
@@ -498,13 +642,230 @@ function contactSummary(records) {
   const total = records.length;
   const byType = {};
   const byPct = {};
-  // Sort by count descending for stable display.
   const sorted = [...counter.entries()].sort((a, b) => b[1] - a[1]);
   for (const [k, v] of sorted) {
     byType[k] = v;
     byPct[k] = total ? v / total : 0;
   }
-  return { total, by_type: byType, by_pct: byPct };
+
+  const qualifiedTypes = new Set(['Sales Lead', 'Partnership']);
+  const noiseTypes = new Set(['Spam', 'Job Seeker']);
+  const qualified = records.filter((r) => qualifiedTypes.has(r.lead_type)).length;
+  const noise = records.filter((r) => noiseTypes.has(r.lead_type)).length;
+
+  return {
+    total,
+    by_type: byType,
+    by_pct: byPct,
+    qualified,
+    qualified_pct: total ? qualified / total : 0,
+    noise,
+    noise_pct: total ? noise / total : 0,
+    by_entry_page: contactsByEntryPage(records),
+    monthly: contactsMonthlyTrend(records),
+    service_interest: serviceInterestTags(records),
+    duplicates: detectDuplicateMessages(records),
+    window: contactDateWindow(records),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Helpers used by the contact summary above.
+// ---------------------------------------------------------------------------
+
+const SERVICE_INTEREST_TAGS = [
+  { label: 'MSP / Managed Services', keywords: ['msp', 'mmsp', 'managed it', 'managed service'] },
+  { label: 'Cybersecurity', keywords: ['cybersecurity', 'cyber security', 'security policy', 'security posture', 'mfa', 'endpoint security'] },
+  { label: 'CMMC Compliance', keywords: ['cmmc'] },
+  { label: 'Microsoft 365 / Intune', keywords: ['microsoft 365', 'm365', 'office 365', 'intune', 'entra id', 'sharepoint', 'onedrive', 'exchange online'] },
+  { label: 'Help Desk / IT Support', keywords: ['help desk', 'helpdesk', 'it support', '24/7 help'] },
+  { label: 'Cloud / Infrastructure', keywords: ['cloud', 'cloud-first', 'cloud migration', 'cloud infrastructure', 'sharepoint'] },
+  { label: 'Network / VoIP', keywords: ['voip', 'network', 'wifi', 'sip'] },
+  { label: 'Hardware / Devices', keywords: ['hardware', 'laptops', 'device management', 'workstation', 'workstations'] },
+  { label: 'Backup / DR', keywords: ['backup', 'disaster recovery', 'business continuity'] },
+];
+
+function pageHostname(url) {
+  if (!url) return '';
+  const s = String(url).trim();
+  if (!s) return '';
+  // Strip protocol + host so /contact/ groups together regardless of host.
+  return s.replace(/^https?:\/\/[^/]+/i, '') || '/';
+}
+
+function contactsByEntryPage(records) {
+  const map = new Map();
+  for (const r of records) {
+    const path = pageHostname(r.conversion_page) || '(unknown)';
+    if (!map.has(path)) {
+      map.set(path, {
+        page: path,
+        total: 0,
+        sales_leads: 0,
+        partnerships: 0,
+        support: 0,
+        spam: 0,
+        other: 0,
+      });
+    }
+    const row = map.get(path);
+    row.total += 1;
+    switch (r.lead_type) {
+      case 'Sales Lead':
+        row.sales_leads += 1;
+        break;
+      case 'Partnership':
+        row.partnerships += 1;
+        break;
+      case 'Support Request':
+        row.support += 1;
+        break;
+      case 'Spam':
+        row.spam += 1;
+        break;
+      default:
+        row.other += 1;
+    }
+  }
+  return [...map.values()]
+    .map((r) => ({
+      ...r,
+      qualified: r.sales_leads + r.partnerships,
+      qualified_rate: r.total ? (r.sales_leads + r.partnerships) / r.total : 0,
+    }))
+    .sort((a, b) => b.sales_leads - a.sales_leads || b.total - a.total);
+}
+
+function excelSerialToDate(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  const n = typeof value === 'number' ? value : Number(value);
+  if (Number.isFinite(n) && n > 25 && n < 110000) {
+    const ms = (n - 25569) * 86400 * 1000;
+    const d = new Date(ms);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function monthKeyOf(d) {
+  if (!d) return null;
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  return `${y}-${m}`;
+}
+
+function contactsMonthlyTrend(records) {
+  const map = new Map();
+  for (const r of records) {
+    const d = excelSerialToDate(r.conversion_date);
+    const key = monthKeyOf(d);
+    if (!key) continue;
+    if (!map.has(key)) {
+      map.set(key, {
+        month: key,
+        date: d,
+        total: 0,
+        sales_leads: 0,
+        partnerships: 0,
+        support: 0,
+        spam: 0,
+        other: 0,
+      });
+    }
+    const row = map.get(key);
+    row.total += 1;
+    switch (r.lead_type) {
+      case 'Sales Lead':
+        row.sales_leads += 1;
+        break;
+      case 'Partnership':
+        row.partnerships += 1;
+        break;
+      case 'Support Request':
+        row.support += 1;
+        break;
+      case 'Spam':
+        row.spam += 1;
+        break;
+      default:
+        row.other += 1;
+    }
+  }
+  return [...map.values()]
+    .sort((a, b) => a.month.localeCompare(b.month))
+    .map((row) => ({
+      ...row,
+      label: row.date
+        ? row.date.toLocaleDateString('en-US', {
+            month: 'short',
+            year: 'numeric',
+            timeZone: 'UTC',
+          })
+        : row.month,
+    }));
+}
+
+function serviceInterestTags(records) {
+  // Tags are derived only from messages that look like genuine prospects so
+  // vendor outreach doesn't pollute the demand signal.
+  const eligible = new Set(['Sales Lead', 'Support Request']);
+  const counts = new Map();
+  for (const r of records) {
+    if (!eligible.has(r.lead_type)) continue;
+    const text = String(r.how_can_we_help || '').toLowerCase();
+    if (!text.trim()) continue;
+    for (const tag of SERVICE_INTEREST_TAGS) {
+      if (tag.keywords.some((k) => text.includes(k))) {
+        counts.set(tag.label, (counts.get(tag.label) || 0) + 1);
+      }
+    }
+  }
+  return [...counts.entries()]
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count);
+}
+
+function detectDuplicateMessages(records) {
+  const map = new Map();
+  for (const r of records) {
+    const key = String(r.how_can_we_help || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    if (!key) continue;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(r);
+  }
+  let groups = 0;
+  let totalDupes = 0;
+  for (const list of map.values()) {
+    if (list.length > 1) {
+      groups += 1;
+      totalDupes += list.length - 1;
+    }
+  }
+  return { groups, total_dupes: totalDupes };
+}
+
+function contactDateWindow(records) {
+  let min = null;
+  let max = null;
+  for (const r of records) {
+    const d = excelSerialToDate(r.conversion_date);
+    if (!d) continue;
+    if (!min || d < min) min = d;
+    if (!max || d > max) max = d;
+  }
+  if (!min || !max) return null;
+  const fmt = (d) =>
+    d.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone: 'UTC',
+    });
+  return { start: min.toISOString(), end: max.toISOString(), label: `${fmt(min)} – ${fmt(max)}` };
 }
 
 function userSummary(usersDf) {
@@ -569,138 +930,6 @@ function benchmarkUsers(usersDf) {
     avg_engagement_rate: meanKey(high, 'engagement_rate'),
     avg_months_active: meanKey(high, 'months_active'),
   };
-}
-
-// ---------------------------------------------------------------------------
-// Insights
-// ---------------------------------------------------------------------------
-
-function generateInsights({ summary, bounce, sources, cities, pages, users, contactInfo }) {
-  const insights = [];
-  const siteBounce = num(summary.site_bounce_rate, 0);
-
-  if (siteBounce >= BOUNCE_TIER_RED) {
-    insights.push({
-      title: 'Site-wide bounce rate is critically high',
-      evidence: `Average site bounce: ${(siteBounce * 100).toFixed(1)}%. More than half of visitors leave without engagement.`,
-      priority: 'high',
-    });
-  } else if (siteBounce >= BOUNCE_TIER_AMBER) {
-    insights.push({
-      title: 'Site-wide bounce rate trending high',
-      evidence: `Average site bounce: ${(siteBounce * 100).toFixed(1)}%. Investigate top landing pages for fixes.`,
-      priority: 'medium',
-    });
-  }
-
-  let confirmedBotSessions = 0;
-  for (const c of cities) {
-    if (c.bot_classification === 'confirmed_bot') {
-      confirmedBotSessions += num(c.sessions, 0);
-    }
-  }
-  const totalSessions = num(summary.total_sessions, 0) || 1;
-  const botShare = confirmedBotSessions / totalSessions;
-  if (botShare >= 0.05) {
-    insights.push({
-      title: 'Bot traffic represents a measurable share of sessions',
-      evidence: `Confirmed-bot cities account for ${Math.round(confirmedBotSessions).toLocaleString('en-US')} sessions (${(botShare * 100).toFixed(1)}% of site total).`,
-      priority: 'high',
-    });
-  }
-
-  const highBouncePages = pages.filter(
-    (p) =>
-      num(p.sessions) >= OPPORTUNITY_MIN_SESSIONS &&
-      num(p.bounce_rate) >= OPPORTUNITY_MIN_BOUNCE,
-  );
-  if (highBouncePages.length) {
-    const sample = [...highBouncePages].sort(
-      (a, b) => num(b.sessions) - num(a.sessions),
-    )[0];
-    insights.push({
-      title: `${highBouncePages.length} high-traffic pages bleeding visitors`,
-      evidence: `Example: '${sample.page}' — ${Math.round(num(sample.sessions)).toLocaleString('en-US')} sessions, ${(num(sample.bounce_rate) * 100).toFixed(1)}% bounce.`,
-      priority: 'high',
-    });
-  }
-
-  const unicornPages = pages.filter(
-    (p) =>
-      num(p.sessions) >= UNICORN_MIN_SESSIONS &&
-      num(p.bounce_rate) <= UNICORN_MAX_BOUNCE,
-  );
-  if (unicornPages.length) {
-    const top = [...unicornPages].sort((a, b) => num(a.bounce_rate) - num(b.bounce_rate))[0];
-    insights.push({
-      title: `${unicornPages.length} unicorn pages drive deep engagement`,
-      evidence: `Best performer: '${top.page}' — ${(num(top.bounce_rate) * 100).toFixed(1)}% bounce. Mine these pages for messaging to reuse.`,
-      priority: 'medium',
-    });
-  }
-
-  const salesLeads = contactInfo?.summary?.by_type?.['Sales Lead'] || 0;
-  if (salesLeads) {
-    insights.push({
-      title: `${salesLeads} sales leads captured via contact form`,
-      evidence: 'Route directly to sales for qualification.',
-      priority: 'medium',
-    });
-  }
-
-  const spamLeads = contactInfo?.summary?.by_type?.Spam || 0;
-  if (spamLeads >= 5) {
-    insights.push({
-      title: `Form spam volume worth a hCaptcha review (${spamLeads} entries)`,
-      evidence: 'Consider adding bot protection if spam keeps climbing.',
-      priority: 'low',
-    });
-  }
-
-  const highValueUsers = users.filter((u) => u.is_high_engagement);
-  if (highValueUsers.length) {
-    insights.push({
-      title: `${highValueUsers.length} high-engagement user IDs identified`,
-      evidence:
-        'These IDs return repeatedly with deep session times — ideal for retargeting and lookalike audiences.',
-      priority: 'medium',
-    });
-  }
-
-  const multiMonth = users.filter((u) => u.is_multi_month);
-  if (multiMonth.length) {
-    insights.push({
-      title: `${multiMonth.length} users active across 3+ months`,
-      evidence: 'Long-funnel research behavior — sequence remarketing accordingly.',
-      priority: 'low',
-    });
-  }
-
-  const organic = sources.find((s) => String(s.source || '').toLowerCase().includes('google'));
-  if (organic) {
-    insights.push({
-      title: 'Google organic remains the largest traffic engine',
-      evidence: `${Math.round(num(organic.sessions)).toLocaleString('en-US')} sessions, ${(num(organic.bounce_rate) * 100).toFixed(1)}% bounce — double-down on SEO content investment.`,
-      priority: 'medium',
-    });
-  }
-
-  const homepageMonthly = bounce?.homepage_monthly || [];
-  if (homepageMonthly.length) {
-    const maxMonth = homepageMonthly.reduce(
-      (best, m) => (num(m.bounce_rate) > num(best.bounce_rate) ? m : best),
-      homepageMonthly[0],
-    );
-    if (num(maxMonth.bounce_rate) >= BOUNCE_TIER_RED) {
-      insights.push({
-        title: `Homepage bounce spiked in ${maxMonth.month_name}`,
-        evidence: `${(num(maxMonth.bounce_rate) * 100).toFixed(1)}% bounce — check campaigns or landing-page experiments that month.`,
-        priority: 'medium',
-      });
-    }
-  }
-
-  return insights.slice(0, 10);
 }
 
 // ---------------------------------------------------------------------------
@@ -956,16 +1185,6 @@ export function runAllAnalysis(parsed, opts = {}) {
   const benchmarks = benchmarkUsers(usersDf);
   const contactSum = contactSummary(contactClassified);
 
-  const insights = generateInsights({
-    summary,
-    bounce: bouncePayload,
-    sources: sourceAgg,
-    cities: cityAgg,
-    pages: pagesSorted,
-    users: sortedUsers,
-    contactInfo: { records: contactClassified, summary: contactSum },
-  });
-
   const sortedSources = [...sourceAgg].sort((a, b) => num(b.sessions) - num(a.sessions));
   const sortedDevices = [...deviceAgg].sort((a, b) => num(b.sessions) - num(a.sessions));
   const sortedCities = [...cityAgg].sort((a, b) => num(b.sessions) - num(a.sessions));
@@ -1032,6 +1251,28 @@ export function runAllAnalysis(parsed, opts = {}) {
     unicorns: unicornsWithEqs,
   });
   bouncePayload.benchmark = benchmark;
+
+  // Dynamic top-10 insights — runs LAST so it can read everything the
+  // dashboard sees (anomalies, concentration, trust, unicorns, …). Each
+  // insight is interpolated from live numbers so a different upload
+  // produces a different list.
+  const insights = buildTopInsights(
+    {
+      summary,
+      monthly,
+      bounce: bouncePayload,
+      sources: sourcesWithEqs,
+      pages: pagesPayloadEnriched,
+      unicorns: unicornsWithEqs,
+      opportunities: opportunitiesWithEqs,
+      users: sortedUsers,
+      users_summary: userSum,
+      contacts_summary: contactSum,
+      bots: botsPayload,
+      unique,
+    },
+    10,
+  );
 
   return {
     summary,

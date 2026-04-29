@@ -68,17 +68,22 @@ export function UnicornPages() {
         </div>
       </div>
 
-      <h2 className="section-header">All <em>unicorns</em> (sorted by bounce)</h2>
+      <h2 className="section-header">All <em>unicorns</em></h2>
       <DataTable
         columns={columns}
         rows={unicorns}
         emptyMessage="No unicorn pages detected — bounce thresholds not met or page data missing."
+        defaultSort={{ key: 'bounce_rate', dir: 'asc' }}
       />
 
       {manufacturing.length > 0 && (
         <>
           <h2 className="section-header">Manufacturing-vertical <em>unicorns</em></h2>
-          <DataTable columns={columns} rows={manufacturing} />
+          <DataTable
+            columns={columns}
+            rows={manufacturing}
+            defaultSort={{ key: 'bounce_rate', dir: 'asc' }}
+          />
         </>
       )}
 
@@ -91,6 +96,7 @@ export function UnicornPages() {
         columns={columns}
         rows={opportunities}
         emptyMessage="No high-bounce opportunity pages."
+        defaultSort={{ key: 'bounce_rate', dir: 'desc' }}
       />
     </>
   );

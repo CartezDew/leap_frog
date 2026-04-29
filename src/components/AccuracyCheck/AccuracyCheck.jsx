@@ -1,15 +1,22 @@
 // Calculation accuracy matrix.
 //
-// Renders the output of `runAccuracyCheck` as a side-by-side comparison
-// table: every headline KPI shown as the dashboard value plus the same
-// number computed independently from each available data sheet, the sum of
-// the monthly trend, and any value scraped from the user's hand-built
-// "Executive Summary" tab.
+// PURPOSE: cross-check every formula and hand-typed total in the user's
+// uploaded workbook against the dashboard's independently-computed value,
+// and surface any discrepancies. This is the panel the user opens when
+// they say "the dashboard doesn't match the number in my Excel."
 //
-// Goal: when the user says "the dashboard doesn't match my Excel," they can
-// look at this panel and immediately see (a) which sheet our number comes
-// from, (b) which other sheets agree or disagree, and (c) where their
-// hand-typed value sits in the picture.
+// Three independent sources are compared per KPI:
+//   1. The Dashboard value (what we display on the cards).
+//   2. The same KPI re-summed from every relevant data sheet
+//      (Medium / Source / Device / City / Page Path) and from the monthly
+//      trend — they should all agree on partition sheets.
+//   3. Any hand-typed value found on an "Executive Summary" / "Analysis"
+//      tab in the user's workbook. We scrape labelled cells like
+//      "Total Sessions: 21,844" and compare them too.
+//
+// Drift over 1% becomes a "warn" cell, drift over 10% becomes "error" — and
+// the whole panel rolls those up into a banner so the user knows at a
+// glance whether their numbers and ours agree.
 
 import {
   LuShieldCheck,
@@ -33,24 +40,31 @@ function statusIcon(status) {
   return LuCircleHelp;
 }
 
-function bannerHeadline(status, counts) {
+function bannerHeadline(status, counts, userTypedCount) {
   if (status === 'error') {
-    return `${counts.error || 0} KPI${counts.error === 1 ? '' : 's'} disagree across sheets`;
+    return `${counts.error || 0} KPI${counts.error === 1 ? '' : 's'} disagree with your uploaded calculations`;
   }
   if (status === 'warn') {
-    return `${counts.warn || 0} KPI${counts.warn === 1 ? '' : 's'} have minor variance`;
+    return `${counts.warn || 0} KPI${counts.warn === 1 ? '' : 's'} drift slightly from your numbers`;
   }
-  return 'Every KPI matches across sheets';
+  if (userTypedCount > 0) {
+    return `Every dashboard number matches the ${userTypedCount} hand-typed total${userTypedCount === 1 ? '' : 's'} in your workbook`;
+  }
+  return 'Every KPI matches across all data sheets';
 }
 
-function bannerCopy(status) {
+function bannerCopy(status, userTypedCount) {
   if (status === 'error') {
-    return 'Different sheets in the workbook report different totals for the same period. The dashboard uses the Medium sheet by default — review the matrix below to see which sheet you want to trust.';
+    return userTypedCount > 0
+      ? `We compared the dashboard against ${userTypedCount} hand-typed total${userTypedCount === 1 ? '' : 's'} in your "Executive Summary"-style tab(s) and the cross-sheet rollups — at least one disagrees materially. Review the rows flagged red below to see which value to trust.`
+      : 'Different sheets in the workbook report different totals for the same period. The dashboard uses the Medium sheet by default — review the matrix below to see which sheet you want to trust.';
   }
   if (status === 'warn') {
-    return 'Numbers agree within a small tolerance. Review any rows flagged below.';
+    return 'Numbers agree within a small tolerance. Review any rows flagged amber below — usually rounding or a slightly different formula in your workbook.';
   }
-  return 'Independent calculations across the Medium, Source, Device sheets, and the monthly trend all return the same totals. You can trust these numbers.';
+  return userTypedCount > 0
+    ? 'Independent rollups from every data sheet agree, and they match the totals you typed by hand in your workbook. You can trust these numbers when reporting to leadership.'
+    : 'Independent calculations across the Medium, Source, Device sheets, and the monthly trend all return the same totals. You can trust these numbers.';
 }
 
 function ProvenanceLine({ provenance, sheets }) {
@@ -248,6 +262,9 @@ export function AccuracyCheck({ accuracy }) {
   // Build the column header from the first row's cell labels (every row has
   // the same shape, so the first row is representative).
   const headerCells = accuracy.rows[0].cells.map((c) => c.label);
+  const userTypedCount = accuracy.user_typed?.merged
+    ? Object.keys(accuracy.user_typed.merged).length
+    : 0;
 
   return (
     <section
@@ -260,9 +277,13 @@ export function AccuracyCheck({ accuracy }) {
             <Icon size={20} />
           </span>
           <div>
-            <p className="acc__eyebrow">Calculation accuracy check</p>
-            <h2 className="acc__title">{bannerHeadline(accuracy.status, accuracy.counts)}</h2>
-            <p className="acc__sub">{bannerCopy(accuracy.status)}</p>
+            <p className="acc__eyebrow">
+              Calculation accuracy check · your workbook vs the dashboard
+            </p>
+            <h2 className="acc__title">
+              {bannerHeadline(accuracy.status, accuracy.counts, userTypedCount)}
+            </h2>
+            <p className="acc__sub">{bannerCopy(accuracy.status, userTypedCount)}</p>
           </div>
         </div>
         <div className="acc__counts">
@@ -287,12 +308,14 @@ export function AccuracyCheck({ accuracy }) {
 
       {accuracy.user_typed && (
         <p className="acc__user-typed">
-          We also scanned your{' '}
+          <strong>Your numbers, picked up automatically:</strong> we scanned{' '}
           <strong>
-            {accuracy.user_typed.sheets_scanned.join(', ') || 'analysis tabs'}
+            {accuracy.user_typed.sheets_scanned.join(', ') || 'your analysis tabs'}
           </strong>{' '}
-          and pulled hand-typed KPI cells where we found a labelled value.
-          Those rows are marked “From your … tab.”
+          for hand-typed totals (cells like "Total Sessions: 21,844") and
+          paired each one with the dashboard's value below. Look for the row
+          marked <em>"From your … tab"</em> — if it disagrees with the
+          dashboard, check the formula in your spreadsheet.
         </p>
       )}
 

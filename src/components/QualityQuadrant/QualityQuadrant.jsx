@@ -49,9 +49,6 @@ function CustomTooltip({ active, payload }) {
         Sessions: <strong>{formatInteger(p.sessions)}</strong>
       </p>
       <p className="quad-tooltip__row">
-        EQS: <strong>{p.engagement_quality_score}</strong>
-      </p>
-      <p className="quad-tooltip__row">
         Engagement: <strong>{formatPercent(p.engagement_rate, 0)}</strong>
       </p>
       <p className={`quad-tooltip__pill quad-tooltip__pill--${p.quadrant}`}>
@@ -83,7 +80,7 @@ export function QualityQuadrant({ quadrant, title = 'Channel Quality Map', subti
           <YAxis
             dataKey="engagement_quality_score"
             type="number"
-            name="EQS"
+            name="Engagement quality"
             stroke="#6b7280"
             domain={[0, 100]}
             ticks={[0, 25, 50, 75, 100]}

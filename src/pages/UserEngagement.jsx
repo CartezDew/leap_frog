@@ -3,6 +3,16 @@ import {
   LuStar,
   LuCalendarRange,
   LuShieldAlert,
+  LuUserCheck,
+  LuFlame,
+  LuTarget,
+  LuBookOpen,
+  LuSearch,
+  LuCrown,
+  LuSparkles,
+  LuActivity,
+  LuClock,
+  LuCalendar,
 } from 'react-icons/lu';
 
 import { PageHeader } from '../components/PageHeader/PageHeader.jsx';
@@ -17,6 +27,16 @@ import {
   formatPercent,
   formatSeconds,
 } from '../lib/formatters.js';
+import { pickWarmProspects, shortenId } from '../lib/levers.js';
+
+// Cleanest → dirtiest, used to sort the Classification badge column by the
+// underlying severity instead of alphabetically.
+const BOT_RANK = {
+  human: 0,
+  suspicious: 1,
+  likely_bot: 2,
+  confirmed_bot: 3,
+};
 
 const userColumns = [
   {
@@ -58,12 +78,55 @@ const userColumns = [
     key: 'bot_classification',
     header: 'Classification',
     render: (row) => <BotBadge classification={row.bot_classification} />,
+    sortValue: (row) => BOT_RANK[row.bot_classification] ?? -1,
   },
 ];
 
 function num(v) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
+}
+
+// --- Warm prospects shortlist helpers -------------------------------------
+// Persona → icon mapping. Falls back to LuUserCheck so a new persona never
+// renders as a blank tile.
+const PERSONA_ICON = {
+  'Deep Researcher': LuSearch,
+  'Intensive Evaluator': LuTarget,
+  'High-Value Prospect': LuCrown,
+  'Engaged Returning User': LuActivity,
+  'Deep Reader': LuBookOpen,
+  'Site Explorer': LuSparkles,
+  'Strong Prospect': LuFlame,
+  'Engaged Visitor': LuUserCheck,
+};
+
+// Tier mapping by rank index (0-based). Each tier picks a tone, a label, and
+// the icon to show beside the rank number. Tiers compress as the list grows
+// so the top half of any 8-card grid always reads as "act now".
+const WARM_TIERS = [
+  { tone: 'red', tag: 'Top pick', icon: LuCrown, top: true }, // rank 0
+  { tone: 'amber', tag: 'Hot', icon: LuFlame }, // ranks 1-2
+  { tone: 'amber', tag: 'Hot', icon: LuFlame },
+  { tone: 'green', tag: 'Warm', icon: LuStar }, // ranks 3-4
+  { tone: 'green', tag: 'Warm', icon: LuStar },
+  { tone: 'purple', tag: 'Engaged', icon: LuSparkles }, // ranks 5+
+  { tone: 'purple', tag: 'Engaged', icon: LuSparkles },
+  { tone: 'purple', tag: 'Engaged', icon: LuSparkles },
+];
+
+function warmTierFor(rank) {
+  return WARM_TIERS[rank] || WARM_TIERS[WARM_TIERS.length - 1];
+}
+
+// Mirrors the score used by pickWarmProspects() in levers.js so the warmth
+// bar reflects the same ordering the list is sorted by.
+function warmthScore(u) {
+  return (
+    num(u.engagement_rate) * num(u.total_sessions) +
+    num(u.months_active) * 5 +
+    num(u.avg_session_duration) / 30
+  );
 }
 
 function buildStoryCards({ usersSummary, benchmarks, users, multiMonth }) {
@@ -189,7 +252,7 @@ function buildStoryCards({ usersSummary, benchmarks, users, multiMonth }) {
           : botRate >= 0.05
             ? 'Some bot pressure — keep an eye on it.'
             : 'Low bot pressure.',
-    caption: `Confirmed + likely-bot IDs. ${suspicious} additional ID${suspicious === 1 ? '' : 's'} flagged suspicious.`,
+    caption: `Confirmed + likely-bot IDs. ${formatInteger(suspicious)} additional ID${suspicious === 1 ? '' : 's'} flagged suspicious.`,
     footer: (
       <>
         <strong>{formatPercent(botRate, 0)}</strong> of all IDs ·{' '}
@@ -210,6 +273,9 @@ export function UserEngagement() {
   const users = analyzed.users || [];
   const top50 = users.slice(0, 50);
   const multiMonth = users.filter((u) => u.is_multi_month).slice(0, 50);
+  const warmProspects = pickWarmProspects(users, 8);
+  const fractionalCount = num(sum.fractional);
+  const ampCount = num(sum.amp);
 
   if (users.length === 0) {
     const meta = analyzed?.metadata || {};
@@ -273,6 +339,7 @@ export function UserEngagement() {
             : 'No User sheet detected'
         }
         body={diag}
+        bodyAlign="start"
       />
     );
   }
@@ -318,6 +385,25 @@ export function UserEngagement() {
         <KpiCard label="Fractional / AMP" value={`${formatInteger(sum.fractional)} / ${formatInteger(sum.amp)}`} />
       </div>
 
+      {(fractionalCount > 0 || ampCount > 0) && (
+        <article className="lever-card lever-card--alert lever-card--inline">
+          <header className="lever-card__head">
+            <span className="lever-card__icon" aria-hidden="true">
+              <LuShieldAlert size={18} />
+            </span>
+            <h3 className="lever-card__title">Filter internal &amp; cross-device traffic</h3>
+            <span className="lever-card__hint">action item</span>
+          </header>
+          <p className="lever-card__body">
+            <strong>{formatInteger(fractionalCount)}</strong> fractional cookie IDs (.2 cross-device, .17/.18 Google Signals)
+            {ampCount > 0 && <> and <strong>{formatInteger(ampCount)}</strong> AMP-wrapped IDs</>} are inflating
+            your unique-user count. These are usually staff browsing on multiple devices or AMP cache hits, not new prospects.
+            Add the Leapfrog office IP ranges in <em>GA4 Admin → Data Filters → Internal Traffic</em> and exclude these
+            ID types from outbound lists.
+          </p>
+        </article>
+      )}
+
       {benchmarks && (
         <>
           <h2 className="section-header">High-engagement <em>benchmarks</em></h2>
@@ -347,7 +433,12 @@ export function UserEngagement() {
       )}
 
       <h2 className="section-header">Top engaged <em>user IDs</em></h2>
-      <DataTable columns={userColumns} rows={top50} hint="Top 50 by total sessions." />
+      <DataTable
+        columns={userColumns}
+        rows={top50}
+        hint="Top 50 by total sessions."
+        defaultSort={{ key: 'total_sessions', dir: 'desc' }}
+      />
 
       {multiMonth.length > 0 && (
         <>
@@ -355,7 +446,150 @@ export function UserEngagement() {
           <p className="section-subhead">
             Users active across 3+ months — long-funnel B2B research behaviour.
           </p>
-          <DataTable columns={userColumns} rows={multiMonth} hint="Up to 50 shown." />
+          <DataTable
+            columns={userColumns}
+            rows={multiMonth}
+            hint="Up to 50 shown."
+            defaultSort={{ key: 'months_active', dir: 'desc' }}
+          />
+        </>
+      )}
+
+      <h2 className="section-header">
+        Warm <em>prospects shortlist</em>
+        <span className="section-header__hint">
+          <LuUserCheck size={14} aria-hidden="true" />
+          {warmProspects.length > 0
+            ? `${warmProspects.length} to call`
+            : 'action list'}
+        </span>
+      </h2>
+      <p className="section-subhead">
+        The cleanest IDs to hand-pick for proactive outreach this week — real humans
+        showing buying behaviour, ranked by warmth.
+      </p>
+
+      <ul className="warm-filters" aria-label="Filters applied to this shortlist">
+        <li className="warm-filter">
+          <span className="warm-filter__dot" aria-hidden="true" />
+          Bots excluded
+        </li>
+        <li className="warm-filter">
+          <span className="warm-filter__dot" aria-hidden="true" />
+          No fractional / cross-device IDs
+        </li>
+        <li className="warm-filter">
+          <span className="warm-filter__dot" aria-hidden="true" />
+          No AMP wrappers
+        </li>
+        <li className="warm-filter">
+          <span className="warm-filter__dot" aria-hidden="true" />
+          Bounce &lt; 70%
+        </li>
+        <li className="warm-filter">
+          <span className="warm-filter__dot" aria-hidden="true" />
+          Avg session ≥ 30s
+        </li>
+      </ul>
+
+      {warmProspects.length === 0 ? (
+        <p className="muted">No high-engagement clean human IDs detected yet.</p>
+      ) : (
+        <>
+          <ul className="warm-grid">
+            {warmProspects.map((u, i) => {
+              const tier = warmTierFor(i);
+              const Icon = PERSONA_ICON[u.persona] || LuUserCheck;
+              const RankIcon = tier.icon;
+              const topScore = warmthScore(warmProspects[0]) || 1;
+              const fillPct = Math.max(
+                35,
+                Math.min(100, Math.round((warmthScore(u) / topScore) * 100)),
+              );
+              const cardClass = [
+                'warm-card',
+                `warm-card--${tier.tone}`,
+                tier.top ? 'warm-card--top' : '',
+              ]
+                .filter(Boolean)
+                .join(' ');
+              return (
+                <li key={u.user_id} className={cardClass}>
+                  <div className="warm-card__head">
+                    <span className="warm-card__rank">
+                      <RankIcon size={14} aria-hidden="true" />#{i + 1}
+                    </span>
+                    <span className="warm-card__tag">{tier.tag}</span>
+                  </div>
+
+                  <div className="warm-card__persona">
+                    <span className="warm-card__icon" aria-hidden="true">
+                      <Icon size={20} />
+                    </span>
+                    <div className="warm-card__persona-body">
+                      <p className="warm-card__persona-name">
+                        {u.persona || 'Engaged Visitor'}
+                      </p>
+                      <code className="warm-card__id" title={u.user_id}>
+                        {shortenId(u.user_id)}
+                      </code>
+                    </div>
+                  </div>
+
+                  <div className="warm-card__warmth">
+                    <div
+                      className="warm-card__warmth-track"
+                      role="progressbar"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={fillPct}
+                      aria-label="Warmth score"
+                    >
+                      <div
+                        className="warm-card__warmth-fill"
+                        style={{ width: `${fillPct}%` }}
+                      />
+                    </div>
+                    <p className="warm-card__warmth-meta">
+                      <span>Warmth</span>
+                      <strong>{fillPct}%</strong>
+                    </p>
+                  </div>
+
+                  <dl className="warm-card__stats">
+                    <div className="warm-card__stat">
+                      <dt>
+                        <LuActivity size={11} aria-hidden="true" /> Sessions
+                      </dt>
+                      <dd>{formatInteger(u.total_sessions)}</dd>
+                    </div>
+                    <div className="warm-card__stat">
+                      <dt>
+                        <LuCalendar size={11} aria-hidden="true" /> Months
+                      </dt>
+                      <dd>{formatInteger(u.months_active)}</dd>
+                    </div>
+                    <div className="warm-card__stat">
+                      <dt>
+                        <LuFlame size={11} aria-hidden="true" /> Engaged
+                      </dt>
+                      <dd>{formatPercent(u.engagement_rate, 0)}</dd>
+                    </div>
+                    <div className="warm-card__stat">
+                      <dt>
+                        <LuClock size={11} aria-hidden="true" /> Avg time
+                      </dt>
+                      <dd>{formatSeconds(u.avg_session_duration)}</dd>
+                    </div>
+                  </dl>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="warm-grid__footnote">
+            Ranked by composite warmth = engagement × sessions + months × 5 + duration ÷ 30.
+            Top {warmProspects.length} shown.
+          </p>
         </>
       )}
     </>

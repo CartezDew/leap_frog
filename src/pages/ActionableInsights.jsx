@@ -18,6 +18,32 @@ function num(v) {
   return Number.isFinite(n) ? n : 0;
 }
 
+// Map an insight `id` to the dashboard route most relevant to it.
+// Used as a fallback when the insight doesn't ship its own
+// `playbook.where_to_look.route`.
+function routeForInsight(insight) {
+  if (!insight) return null;
+  const fromPlaybook = insight.playbook?.where_to_look?.route;
+  if (fromPlaybook) return fromPlaybook;
+
+  const id = String(insight.id || '');
+  if (id.startsWith('site-bounce') || id.startsWith('homepage-spike'))
+    return '/bounce';
+  if (id.startsWith('worst-channel') || id.startsWith('scale-channel'))
+    return '/sources';
+  if (id === 'ai-search-emerging' || id === 'email-quality') return '/sources';
+  if (id === 'new-users-low' || id === 'new-users-very-high') return '/sources';
+  if (id === 'refresh-candidates' || id === 'page-concentration')
+    return '/pages';
+  if (id === 'unicorn-pages') return '/unicorns';
+  if (id.startsWith('sales-leads') || id === 'contact-spam') return '/contact';
+  if (id === 'multi-month-research' || id === 'fractional-cookies')
+    return '/users';
+  if (id === 'bot-filter') return '/bots';
+  if (id === 'monthly-anomalies' || id === 'trust-score') return '/overview';
+  return '/overview';
+}
+
 function buildStoryCards(analyzed) {
   const insights = analyzed?.insights || [];
   const summary = analyzed?.summary || {};
@@ -34,7 +60,8 @@ function buildStoryCards(analyzed) {
 
   const totalSessions = num(summary.total_sessions);
 
-  // Card 1 — overall briefing
+  // Card 1 — overall briefing. Clicking jumps to the full insights list
+  // further down the page (anchor lives above the High priority section).
   const insightsCard = {
     id: 'insights-generated',
     tone: high.length > 0 ? 'red' : medium.length > 0 ? 'amber' : 'green',
@@ -49,16 +76,21 @@ function buildStoryCards(analyzed) {
           : medium.length > 0
             ? 'Mostly stable — a few things worth tracking.'
             : 'All systems healthy.',
-    caption: 'Auto-extracted from your dataset by the rules in SKILL.md.',
+    caption:
+      'Detected automatically from patterns in your uploaded workbook.',
     footer: (
       <>
         <strong>{high.length}</strong> high · <strong>{medium.length}</strong>{' '}
         medium · <strong>{low.length}</strong> wins
       </>
     ),
+    to: insights.length > 0 ? '#insights-list' : null,
+    ctaLabel: 'See full list',
   };
 
-  // Card 2 — top priority focus
+  // Card 2 — top priority focus. Clicking jumps to the dashboard page that
+  // backs that specific insight (uses the playbook hint when the signal
+  // ships one, otherwise an id-based fallback).
   const top = high[0] || medium[0] || low[0];
   const topPriorityCard = top
     ? {
@@ -85,6 +117,11 @@ function buildStoryCards(analyzed) {
             : medium.length > 0
               ? `+${medium.length} medium-priority follow-up${medium.length === 1 ? '' : 's'}`
               : 'No further high-priority items.',
+        to: routeForInsight(top),
+        ctaLabel:
+          top.playbook?.where_to_look?.label
+            ? `Open ${top.playbook.where_to_look.label}`
+            : 'Open the data',
       }
     : {
         id: 'top-priority',
@@ -111,6 +148,13 @@ function buildStoryCards(analyzed) {
   const riskTone =
     atRiskShare >= 0.25 ? 'red' : atRiskShare >= 0.1 ? 'amber' : 'green';
 
+  // Send the user to whichever page best explains the risk: bots tab when
+  // bot traffic dominates the at-risk pool, page-path tab when bleeding
+  // pages do.
+  const botSessionsTotal = confirmedBotSessions + likelyBotSessions;
+  const riskRoute = botSessionsTotal > opportunitySessions ? '/bots' : '/pages';
+  const riskCtaLabel =
+    riskRoute === '/bots' ? 'Open bot intelligence' : 'Open page analysis';
   const riskCard = {
     id: 'sessions-at-risk',
     tone: riskTone,
@@ -127,11 +171,21 @@ function buildStoryCards(analyzed) {
         <strong>{formatPercent(atRiskShare, 1)}</strong> of total sessions
       </>
     ),
+    to: atRiskSessions > 0 ? riskRoute : null,
+    ctaLabel: riskCtaLabel,
   };
 
   // Card 4 — opportunities to leverage
   const highValueIds = num(usersSummary.high_engagement);
   const opportunityCount = unicorns.length + highValueIds;
+  // Prefer the Unicorn Pages tab when there are unicorns; otherwise drop
+  // into the User ID Engagement tab where the high-value IDs live.
+  const opportunitiesRoute =
+    unicorns.length > 0 ? '/unicorns' : highValueIds > 0 ? '/users' : null;
+  const opportunitiesCtaLabel =
+    opportunitiesRoute === '/unicorns'
+      ? 'See unicorn pages'
+      : 'See top user IDs';
   const opportunitiesCard = {
     id: 'opportunities',
     tone: 'green',
@@ -152,6 +206,8 @@ function buildStoryCards(analyzed) {
             </>
           )
         : 'Replicate winning patterns across the site.',
+    to: opportunitiesRoute,
+    ctaLabel: opportunitiesCtaLabel,
   };
 
   return [insightsCard, topPriorityCard, riskCard, opportunitiesCard];
@@ -217,7 +273,7 @@ export function ActionableInsights() {
           </p>
         </div>
       ) : (
-        <>
+        <div id="insights-list">
           <Section
             title={
               <>
@@ -242,7 +298,7 @@ export function ActionableInsights() {
             }
             list={low}
           />
-        </>
+        </div>
       )}
     </>
   );

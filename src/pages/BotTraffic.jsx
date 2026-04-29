@@ -1,14 +1,27 @@
+import { LuBot } from 'react-icons/lu';
+
 import { PageHeader } from '../components/PageHeader/PageHeader.jsx';
 import { KpiCard } from '../components/KpiCard/KpiCard.jsx';
 import { DataTable } from '../components/DataTable/DataTable.jsx';
 import { EmptyState } from '../components/EmptyState/EmptyState.jsx';
 import { BotBadge } from '../components/StatusBadge/StatusBadge.jsx';
+import { BotAlertBanner } from '../components/BotAlertBanner/BotAlertBanner.jsx';
 import { useData } from '../context/DataContext.jsx';
 import {
   bounceClass,
   formatInteger,
   formatPercent,
 } from '../lib/formatters.js';
+import { computeBotImpact } from '../lib/levers.js';
+
+// Cleanest → dirtiest, used to give the Classification badge column a
+// meaningful sort order instead of plain alphabetical.
+const BOT_RANK = {
+  human: 0,
+  suspicious: 1,
+  likely_bot: 2,
+  confirmed_bot: 3,
+};
 
 const cityColumns = [
   { key: 'city', header: 'City', className: 'col-strong' },
@@ -45,6 +58,7 @@ const cityColumns = [
     key: 'classification',
     header: 'Classification',
     render: (row) => <BotBadge classification={row.bot_classification} />,
+    sortValue: (row) => BOT_RANK[row.bot_classification] ?? -1,
   },
 ];
 
@@ -77,6 +91,7 @@ const sourceColumns = [
     key: 'classification',
     header: 'Classification',
     render: (row) => <BotBadge classification={row.bot_classification} />,
+    sortValue: (row) => BOT_RANK[row.bot_classification] ?? -1,
   },
 ];
 
@@ -86,6 +101,9 @@ export function BotTraffic() {
   const bots = analyzed.bots || {};
   const sum = bots.summary || {};
   const methodology = bots.methodology || {};
+  const impact = computeBotImpact(analyzed.summary, bots);
+  const showImpact =
+    impact.confirmed_bot_sessions > 0 || impact.bot_user_ids > 0;
 
   return (
     <>
@@ -94,6 +112,12 @@ export function BotTraffic() {
         badgeVariant="green"
         title="Bot Traffic Intelligence"
         subtitle="City- and source-level scoring of probable bot/datacentre traffic."
+      />
+
+      <BotAlertBanner
+        bots={bots}
+        totalSessions={analyzed.summary?.total_sessions || 0}
+        showLink={false}
       />
 
       <div className="card-grid card-grid--cols-4">
@@ -132,11 +156,50 @@ export function BotTraffic() {
         />
       </div>
 
+      {showImpact && (
+        <article className="lever-card lever-card--info lever-card--inline">
+          <header className="lever-card__head">
+            <span className="lever-card__icon" aria-hidden="true">
+              <LuBot size={18} />
+            </span>
+            <h3 className="lever-card__title">Bot impact on reported metrics</h3>
+            <span className="lever-card__hint">use this number with leadership</span>
+          </header>
+          <p className="lever-card__metric">
+            <strong>{formatPercent(impact.bot_share_of_classified, 1)}</strong>
+            <span className="lever-card__metric-label">
+              of classified sessions are confirmed bots
+            </span>
+          </p>
+          <p className="lever-card__body">
+            Removing them ({formatInteger(impact.confirmed_bot_sessions)} sessions across{' '}
+            {formatInteger(impact.bot_user_ids)} bot user IDs) lifts true engagement rate to{' '}
+            <strong>{formatPercent(impact.clean_engagement, 1)}</strong> versus the reported{' '}
+            {formatPercent(impact.reported_engagement, 1)}
+            {impact.engagement_lift > 0 && (
+              <>
+                {' '}— a <strong>+{formatPercent(impact.engagement_lift, 1)}</strong> swing
+              </>
+            )}
+            . Use the cleaner number when reporting to leadership.
+          </p>
+        </article>
+      )}
+
       <h2 className="section-header">City-level bot <em>scoring</em></h2>
-      <DataTable columns={cityColumns} rows={bots.cities || []} hint="Top 60 by sessions" />
+      <DataTable
+        columns={cityColumns}
+        rows={bots.cities || []}
+        hint="Top 60 by sessions"
+        defaultSort={{ key: 'sessions', dir: 'desc' }}
+      />
 
       <h2 className="section-header">Source-level bot <em>scoring</em></h2>
-      <DataTable columns={sourceColumns} rows={bots.sources || []} />
+      <DataTable
+        columns={sourceColumns}
+        rows={bots.sources || []}
+        defaultSort={{ key: 'sessions', dir: 'desc' }}
+      />
 
       <h2 className="section-header"><em>Methodology</em></h2>
       <div className="card-grid card-grid--cols-2">
