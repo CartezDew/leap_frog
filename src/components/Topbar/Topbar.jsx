@@ -17,13 +17,14 @@ import {
   LuInfo,
   LuCompass,
   LuRocket,
+  LuTriangleAlert,
 } from 'react-icons/lu';
 
 import { useData } from '../../context/DataContext.jsx';
 import mainLogo from '../../images/Main_Logo.webp';
 
 export function Topbar() {
-  const { hasData } = useData();
+  const { hasData, isSyntheticData } = useData();
   const [open, setOpen] = useState(false);
   const menuId = useId();
   const navRef = useRef(null);
@@ -73,6 +74,13 @@ export function Topbar() {
             Analytics <em>Dashboard</em>
           </span>
         </NavLink>
+
+        {isSyntheticData && (
+          <div className="topbar__synthetic-badge" aria-label="Synthetic test data active">
+            <LuTriangleAlert size={14} />
+            Synthetic test data
+          </div>
+        )}
 
         <button
           type="button"

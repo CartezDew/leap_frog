@@ -1,18 +1,38 @@
 # Upload DATA
 
-Drop your GA4 Excel exports (`.xlsx` / `.xls`) into this folder. The dashboard
-reads files **directly from this folder** and runs the analysis on whichever
-file you select.
+Drop your GA4 Excel exports (`.xlsx` / `.xls`) **and** Semrush "Organic
+Performance" PDFs into this folder. The dashboard reads files **directly
+from this folder** and runs the analysis on whichever file(s) you select.
+
+## Synthetic Semrush samples (already here)
+
+The four `synthetic-keywords-*-26.pdf` files in this folder are
+**fabricated** monthly Semrush exports for Jan–Apr 2026. They ship with
+the dashboard so the client can test the Keywords page end-to-end
+without uploading real data. Add any combination of the four to the
+batch on the Upload page and click **Run analysis** — the Keywords tab
+will populate with movers, decliners, brand fortress, quick wins, theme
+heatmap (4 months unlocks the heatmap), and intent buckets.
+
+To regenerate them, run:
+
+```bash
+node scripts/build-synthetic-semrush.mjs
+```
+
+The same files also live (read-only) in `sample-data/` so they survive
+even if this folder gets cleared. Real client PDFs you drop in here are
+gitignored automatically.
 
 ## How it works
 
 The Vite dev server (and the production build) auto-discovers every workbook
-in this folder and exposes them to the React app:
+or Semrush PDF in this folder and exposes them to the React app:
 
 1. The Vite plugin in `vite-plugins/upload-data.js` watches this folder.
 2. On `npm run dev` and `npm run build`, the plugin publishes a manifest at
-   `/__upload_data_manifest.json` listing every `.xlsx` / `.xls` file (name,
-   size, last-modified timestamp).
+   `/__upload_data_manifest.json` listing every `.xlsx` / `.xls` / `.pdf`
+   file (name, size, last-modified timestamp).
 3. The Upload page in the dashboard fetches that manifest and shows the files
    in a "Files in Upload DATA/" picker. Click *Run analysis* and the browser:
    - Fetches the file's bytes over the dev server,

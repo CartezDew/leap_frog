@@ -20,6 +20,7 @@ export function UploadPage() {
     fileCount,
     uploadedAt,
     staged,
+    isSyntheticData,
   } = useData();
 
   return (
@@ -61,6 +62,15 @@ export function UploadPage() {
           <div className="row-spread">
             <div>
               <h2 className="section-header">Current <em>dataset</em></h2>
+              {isSyntheticData && (
+                <div className="synthetic-current-dataset">
+                  <strong>Synthetic test report in use</strong>
+                  <span>
+                    KPI totals are intentionally patterned for demos. Upload real GA4/Semrush exports
+                    to clear test mode.
+                  </span>
+                </div>
+              )}
               <p className="section-subhead">
                 Loaded{' '}
                 <strong>

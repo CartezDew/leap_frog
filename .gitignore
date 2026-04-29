@@ -20,8 +20,12 @@ Thumbs.db
 .env.local
 .env.*.local
 
-# Local Excel staging — keep client data out of git
+# Local Excel / Semrush staging — keep client data out of git
 Upload DATA/*.xlsx
 Upload DATA/*.xls
+Upload DATA/*.pdf
 !Upload DATA/.gitkeep
 !Upload DATA/README.md
+# Synthetic Semrush samples ship with the dashboard so the client can
+# test the Keywords page without touching real data.
+!Upload DATA/synthetic-keywords-*.pdf

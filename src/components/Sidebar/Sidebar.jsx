@@ -88,6 +88,7 @@ export function Sidebar() {
     filename,
     fileCount,
     uploadedAt,
+    isSyntheticData,
     clear,
   } = useData();
 
@@ -230,6 +231,12 @@ export function Sidebar() {
       <div className="sidebar__footer">
         {hasData ? (
           <>
+            {isSyntheticData && (
+              <div className="sidebar__synthetic-flag">
+                <span>Test mode</span>
+                Synthetic workbook active
+              </div>
+            )}
             <p className="sidebar__file" title={uploadedAt || ''}>
               {fileCount > 1
                 ? `${fileCount} workbooks merged`

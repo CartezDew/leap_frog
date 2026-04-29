@@ -544,6 +544,29 @@
   word-break: break-all;
 }
 
+.sidebar__synthetic-flag {
+  margin: 0 0 10px;
+  padding: 9px 10px;
+  border: 1px solid rgba(251, 191, 36, 0.34);
+  border-radius: 12px;
+  background:
+    linear-gradient(135deg, rgba(217, 119, 6, 0.22), rgba(154, 202, 60, 0.12)),
+    rgba(255, 255, 255, 0.04);
+  color: #fef3c7;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.sidebar__synthetic-flag span {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--brand-green);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
 .sidebar__clear-btn {
   background: transparent;
   border: 1px solid rgba(154, 202, 60, 0.4);

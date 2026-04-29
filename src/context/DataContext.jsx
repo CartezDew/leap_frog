@@ -29,6 +29,11 @@ import { fetchUploadDataManifest } from '../lib/uploadDataLibrary.js';
 import { MAX_UPLOAD_BYTES, STORAGE_KEY } from '../lib/skillConfig.js';
 
 const DataContext = createContext(null);
+const SYNTHETIC_DATA_RX = /(?:^|[-_\s])(synthetic|sample|demo|test)(?:[-_\s.]|$)/i;
+
+function isSyntheticSource(value) {
+  return SYNTHETIC_DATA_RX.test(String(value || ''));
+}
 
 function readFromStorage() {
   if (typeof window === 'undefined') return null;
@@ -280,6 +285,16 @@ export function DataProvider({ children }) {
   const stagedTotalBytes = staged.reduce((sum, it) => sum + (it.size || 0), 0);
   const stagedReadyCount = staged.filter((it) => it.status === 'ready').length;
   const stagedParsing = staged.some((it) => it.status === 'parsing');
+  const sourceFiles = dataset?.sourceFiles || [];
+  const isSyntheticData = Boolean(
+    dataset &&
+      [
+        dataset.filename,
+        dataset.filenameLabel,
+        ...sourceFiles.map((source) => source.filename),
+        ...sourceFiles.map((source) => source.sourceUrl),
+      ].some(isSyntheticSource),
+  );
 
   // Derive which report types contributed to the current dataset. Older
   // payloads (persisted before we tracked `kinds`) fall back to inspecting
@@ -313,9 +328,10 @@ export function DataProvider({ children }) {
       metadata: dataset?.metadata || null,
       filename: dataset?.filename || '',
       filenameLabel: dataset?.filenameLabel || dataset?.filename || '',
-      sourceFiles: dataset?.sourceFiles || [],
+      sourceFiles,
       fileCount: dataset?.fileCount || (dataset ? 1 : 0),
       uploadedAt: dataset?.uploadedAt || null,
+      isSyntheticData,
       hasData: Boolean(dataset?.analyzed),
       hasGA4: Boolean(kinds?.has_ga4),
       hasSemrush: Boolean(kinds?.has_semrush),
@@ -343,6 +359,8 @@ export function DataProvider({ children }) {
     }),
     [
       dataset,
+      sourceFiles,
+      isSyntheticData,
       kinds,
       hydrated,
       analyzeStatus,

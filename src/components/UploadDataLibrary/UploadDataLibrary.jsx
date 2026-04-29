@@ -12,6 +12,12 @@ function isPdfName(name) {
   return /\.pdf$/i.test(String(name || ''));
 }
 
+function isSyntheticFileName(name) {
+  return /(?:^|[-_\s])(synthetic|sample|demo|test)(?:[-_\s.]|$)/i.test(
+    String(name || ''),
+  );
+}
+
 import { useData } from '../../context/DataContext.jsx';
 
 function formatBytes(bytes) {
@@ -112,13 +118,14 @@ export function UploadDataLibrary() {
           {manifest.map((entry) => {
             const inBatch = stagedNames.has(entry.name);
             const inDataset = loadedNames.has(entry.name);
+            const isSynthetic = isSyntheticFileName(entry.name);
             const isPending = pendingName === entry.name;
             return (
               <li
                 key={entry.name}
                 className={`upload-library__item${
                   inDataset ? ' upload-library__item--active' : ''
-                }`}
+                }${isSynthetic ? ' upload-library__item--synthetic' : ''}`}
               >
                 <div className="upload-library__meta">
                   <span className="upload-library__icon">
@@ -137,6 +144,9 @@ export function UploadDataLibrary() {
                   </div>
                 </div>
                 <div className="upload-library__actions">
+                  {isSynthetic && (
+                    <span className="pill pill--synthetic">Synthetic test data</span>
+                  )}
                   {inDataset && <span className="pill pill--green">In dataset</span>}
                   {inBatch ? (
                     <button
