@@ -169,7 +169,7 @@ export function Sidebar() {
               className={({ isActive }) =>
                 `sidebar__nav-link${isActive ? ' is-active' : ''}`
               }
-              title={collapsed ? uploadLabel : undefined}
+              data-tooltip={uploadLabel}
               aria-label={uploadLabel}
             >
               <span className="sidebar__nav-icon">
@@ -219,7 +219,10 @@ export function Sidebar() {
                   aria-disabled={!enabled}
                   aria-label={item.label}
                   tabIndex={enabled ? 0 : -1}
-                  title={tooltip}
+                  data-tooltip={tooltip || item.label}
+                  onClick={(event) => {
+                    if (!enabled) event.preventDefault();
+                  }}
                 >
                   <span className="sidebar__nav-icon">
                     <Icon size={18} />
