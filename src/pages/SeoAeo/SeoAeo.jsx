@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   LuArrowUpRight,
   LuBot,
+  LuChevronDown,
   LuExternalLink,
   LuFileSearch,
   LuGlobe,
@@ -127,78 +128,27 @@ function FixDetail({ heading, text }) {
   );
 }
 
-function CrawlDebugPanel({ debug, status, error }) {
-  if (!debug) return null;
-
-  const response = debug.response || {};
-  const request = debug.request || {};
-  const details = {
-    status,
-    error: error || null,
-    endpoint: debug.endpoint,
-    startedAt: debug.startedAt,
-    elapsedMs: debug.elapsedMs ?? null,
-    request,
-    response,
-  };
-
+function CampaignClusterDetail({ row }) {
+  const examples = Array.isArray(row.sampleKeywords) ? row.sampleKeywords : [];
   return (
-    <details className="seo-crawl-debug" open={status === 'error'}>
-      <summary>
-        Crawl debug
-        <span>
-          {response.status
-            ? `HTTP ${response.status} · ${response.contentType || 'unknown type'}`
-            : status}
-        </span>
-      </summary>
-      <dl className="seo-crawl-debug__grid">
-        <div>
-          <dt>Endpoint</dt>
-          <dd>{debug.endpoint || '/__site_crawl/scan'}</dd>
-        </div>
-        <div>
-          <dt>Status</dt>
-          <dd>{response.status ? `${response.status} ${response.statusText || ''}` : status}</dd>
-        </div>
-        <div>
-          <dt>Content type</dt>
-          <dd>{response.contentType || 'Not returned yet'}</dd>
-        </div>
-        <div>
-          <dt>Elapsed</dt>
-          <dd>{debug.elapsedMs == null ? 'Running...' : `${debug.elapsedMs} ms`}</dd>
-        </div>
-        <div>
-          <dt>Origin</dt>
-          <dd>{request.origin || 'https://leapfrogservices.com'}</dd>
-        </div>
-        <div>
-          <dt>Limit</dt>
-          <dd>{request.limit || 90}</dd>
-        </div>
-        {response.url && (
-          <div>
-            <dt>Final URL</dt>
-            <dd>{response.url}</dd>
-          </div>
+    <div className="seo-campaign-detail">
+      <div>
+        <h4 className="seo-campaign-detail__heading">Keyword examples</h4>
+        {examples.length > 0 ? (
+          <ul className="seo-campaign-detail__chips">
+            {examples.map((keyword) => (
+              <li key={keyword}>{keyword}</li>
+            ))}
+          </ul>
+        ) : (
+          <p className="seo-campaign-detail__empty">No sample keywords available.</p>
         )}
-        {response.payloadKeys?.length > 0 && (
-          <div>
-            <dt>Payload keys</dt>
-            <dd>{response.payloadKeys.join(', ')}</dd>
-          </div>
-        )}
-      </dl>
-      {response.bodyPreview && (
-        <>
-          <h3>Response preview</h3>
-          <pre>{response.bodyPreview}</pre>
-        </>
-      )}
-      <h3>Full debug object</h3>
-      <pre>{JSON.stringify(details, null, 2)}</pre>
-    </details>
+      </div>
+      <div>
+        <h4 className="seo-campaign-detail__heading">Recommended use</h4>
+        <p className="seo-campaign-detail__text">{row.recommendation || '—'}</p>
+      </div>
+    </div>
   );
 }
 
@@ -209,7 +159,6 @@ export function SeoAeo() {
     siteCrawl,
     siteCrawlStatus,
     siteCrawlError,
-    siteCrawlDebug,
     runSiteCrawl,
   } = useData();
 
@@ -268,14 +217,6 @@ export function SeoAeo() {
       align: 'right',
       format: (v) => `$${formatInteger(v)}`,
     },
-    {
-      key: 'sampleKeywords',
-      header: 'Examples',
-      render: (row) => row.sampleKeywords.join(', '),
-      sortable: false,
-      exportValue: (row) => (row.sampleKeywords || []).join(', '),
-    },
-    { key: 'recommendation', header: 'Recommended use', sortable: false },
   ];
 
   async function handleCrawl() {
@@ -283,7 +224,7 @@ export function SeoAeo() {
       origin: 'https://leapfrogservices.com',
       limit: 90,
     }).catch(() => {
-      // The visible error banner and debug panel are set by DataContext.
+      // The visible error banner is set by DataContext.
     });
   }
 
@@ -312,12 +253,6 @@ export function SeoAeo() {
           <LuTriangleAlert size={14} /> {siteCrawlError}
         </div>
       )}
-
-      <CrawlDebugPanel
-        debug={siteCrawlDebug || siteCrawl?._debug}
-        status={siteCrawlStatus}
-        error={siteCrawlError}
-      />
 
       <AuditIdentity siteCrawl={siteCrawl} />
 
@@ -464,12 +399,24 @@ export function SeoAeo() {
             defaultSort={{ key: 'paidValue', dir: 'desc' }}
             exportFileStem="seo-aeo-campaign-clusters"
             expandable={{
-              triggerColumn: 'recommendation',
-              showLabel: 'How to fix',
-              hideLabel: 'Hide details',
-              render: (row) => (
-                <FixDetail heading="Recommended use" text={row.recommendation} />
+              triggerColumn: 'theme',
+              showLabel: 'View examples',
+              hideLabel: 'Hide examples',
+              renderTrigger: ({ row, isOpen, toggle, showLabel, hideLabel }) => (
+                <div className="seo-campaign-trigger">
+                  <span className="seo-campaign-trigger__theme">{row.theme}</span>
+                  <button
+                    type="button"
+                    className={`seo-campaign-trigger__button${isOpen ? ' is-open' : ''}`}
+                    aria-expanded={isOpen}
+                    onClick={toggle}
+                  >
+                    <LuChevronDown size={13} aria-hidden="true" />
+                    {isOpen ? hideLabel : showLabel}
+                  </button>
+                </div>
               ),
+              render: (row) => <CampaignClusterDetail row={row} />,
             }}
           />
 

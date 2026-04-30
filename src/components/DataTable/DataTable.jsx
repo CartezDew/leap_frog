@@ -89,6 +89,8 @@ export function DataTable({
    *     triggerColumn: 'recommendation',     // which column shows the toggle pill
    *     showLabel: 'How to fix',             // (optional) collapsed label
    *     hideLabel: 'Hide details',           // (optional) expanded label
+   *     triggerLabel: (row, isOpen) => '...', // (optional) custom pill text
+   *     renderTrigger: (args) => <node>,      // (optional) full custom trigger cell
    *     render: (row, idx) => <node>,        // detail content for the full-width row
    *   }
    *
@@ -241,6 +243,20 @@ export function DataTable({
               const isOpen = hasDetail && expandedRows.has(rowKey);
               const showLabel = expandable?.showLabel ?? 'How to fix';
               const hideLabel = expandable?.hideLabel ?? 'Hide details';
+              const triggerLabel =
+                typeof expandable?.triggerLabel === 'function'
+                  ? expandable.triggerLabel(row, isOpen, idx)
+                  : isOpen
+                    ? hideLabel
+                    : showLabel;
+              const toggleExpanded = () => {
+                setExpandedRows((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(rowKey)) next.delete(rowKey);
+                  else next.add(rowKey);
+                  return next;
+                });
+              };
               const trEls = [
                 <tr
                   key={rowKey}
@@ -250,26 +266,29 @@ export function DataTable({
                     const value = row[col.key];
                     let content;
                     if (hasDetail && col.key === triggerKey) {
-                      content = (
-                        <button
-                          type="button"
-                          className={`table__expand-trigger${isOpen ? ' is-open' : ''}`}
-                          aria-expanded={isOpen}
-                          onClick={() => {
-                            setExpandedRows((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(rowKey)) next.delete(rowKey);
-                              else next.add(rowKey);
-                              return next;
-                            });
-                          }}
-                        >
-                          <LuChevronDown size={14} aria-hidden="true" />
-                          <span className="table__expand-trigger-label">
-                            {isOpen ? hideLabel : showLabel}
-                          </span>
-                        </button>
-                      );
+                      content =
+                        typeof expandable?.renderTrigger === 'function' ? (
+                          expandable.renderTrigger({
+                            row,
+                            idx,
+                            isOpen,
+                            toggle: toggleExpanded,
+                            showLabel,
+                            hideLabel,
+                          })
+                        ) : (
+                          <button
+                            type="button"
+                            className={`table__expand-trigger${isOpen ? ' is-open' : ''}`}
+                            aria-expanded={isOpen}
+                            onClick={toggleExpanded}
+                          >
+                            <LuChevronDown size={14} aria-hidden="true" />
+                            <span className="table__expand-trigger-label">
+                              {triggerLabel}
+                            </span>
+                          </button>
+                        );
                     } else if (col.render) {
                       content = col.render(row, idx);
                     } else if (col.format) {
