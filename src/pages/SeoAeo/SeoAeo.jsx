@@ -222,7 +222,7 @@ export function SeoAeo() {
   async function handleCrawl() {
     await runSiteCrawl({
       origin: 'https://leapfrogservices.com',
-      limit: 90,
+      limit: 150,
     }).catch(() => {
       // The visible error banner is set by DataContext.
     });
@@ -260,11 +260,26 @@ export function SeoAeo() {
         <EmptyState hasSemrush={hasSemrush} busy={busy} onRun={handleCrawl} />
       ) : (
         <>
+          {siteCrawl?.discoveredUrlCount > siteCrawl?.crawledUrlCount && (
+            <div className="seo-crawl-limit-alert">
+              <LuTriangleAlert size={16} aria-hidden="true" />
+              <div>
+                <strong>Full-site crawl requires a backend</strong>
+                <p>
+                  The live button crawled {formatInteger(siteCrawl.crawledUrlCount)} of{' '}
+                  {formatInteger(siteCrawl.discoveredUrlCount)} discovered sitemap pages.
+                  To crawl every discovered URL, connect this dashboard to a backend or
+                  background crawl job that stores a full-site crawl snapshot.
+                </p>
+              </div>
+            </div>
+          )}
+
           <div className="card-grid card-grid--cols-4">
             <KpiCard
               label="Pages crawled"
               value={formatInteger(analysis.summary.crawledPages)}
-              sub={`${formatInteger(analysis.summary.discoveredPages)} discovered in sitemaps`}
+              sub={`${formatInteger(analysis.summary.discoveredPages)} discovered in sitemaps; live button crawls up to 150`}
               accent="green"
             />
             <KpiCard
