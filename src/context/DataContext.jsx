@@ -78,6 +78,7 @@ export function DataProvider({ children }) {
   const [analyzeStatus, setAnalyzeStatus] = useState('idle'); // idle | analyzing | ready | error
   const [siteCrawlStatus, setSiteCrawlStatus] = useState('idle'); // idle | crawling | ready | error
   const [siteCrawlError, setSiteCrawlError] = useState(null);
+  const [siteCrawlDebug, setSiteCrawlDebug] = useState(null);
   const [error, setError] = useState(null);
   /** Non-blocking notice (e.g. duplicate file content skipped at staging). */
   const [uploadNotice, setUploadNotice] = useState(null);
@@ -334,9 +335,20 @@ export function DataProvider({ children }) {
 
   const runSiteCrawl = useCallback(async (options = {}) => {
     setSiteCrawlError(null);
+    setSiteCrawlDebug({
+      endpoint: '/__site_crawl/scan',
+      startedAt: new Date().toISOString(),
+      request: {
+        origin: options.origin || 'https://leapfrogservices.com',
+        limit: options.limit || 80,
+        cache: 'no-store',
+      },
+      status: 'starting',
+    });
     setSiteCrawlStatus('crawling');
     try {
       const result = await crawlLeapfrogSite(options);
+      setSiteCrawlDebug(result._debug || null);
       setDataset((prev) => {
         const next = {
           ...(prev || {}),
@@ -350,6 +362,7 @@ export function DataProvider({ children }) {
       return result;
     } catch (err) {
       console.error('Failed to crawl Leapfrog site', err);
+      setSiteCrawlDebug(err.debug || null);
       setSiteCrawlError(err.message || 'Site crawl failed.');
       setSiteCrawlStatus('error');
       throw err;
@@ -363,6 +376,7 @@ export function DataProvider({ children }) {
     setAnalyzeStatus('idle');
     setSiteCrawlStatus('idle');
     setSiteCrawlError(null);
+    setSiteCrawlDebug(null);
     setError(null);
     setUploadNotice(null);
   }, []);
@@ -428,6 +442,7 @@ export function DataProvider({ children }) {
       analyzeStatus,
       siteCrawlStatus,
       siteCrawlError,
+      siteCrawlDebug,
       error,
       uploadNotice,
       dismissUploadNotice,
@@ -459,6 +474,7 @@ export function DataProvider({ children }) {
       analyzeStatus,
       siteCrawlStatus,
       siteCrawlError,
+      siteCrawlDebug,
       error,
       uploadNotice,
       dismissUploadNotice,

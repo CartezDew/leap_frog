@@ -127,6 +127,81 @@ function FixDetail({ heading, text }) {
   );
 }
 
+function CrawlDebugPanel({ debug, status, error }) {
+  if (!debug) return null;
+
+  const response = debug.response || {};
+  const request = debug.request || {};
+  const details = {
+    status,
+    error: error || null,
+    endpoint: debug.endpoint,
+    startedAt: debug.startedAt,
+    elapsedMs: debug.elapsedMs ?? null,
+    request,
+    response,
+  };
+
+  return (
+    <details className="seo-crawl-debug" open={status === 'error'}>
+      <summary>
+        Crawl debug
+        <span>
+          {response.status
+            ? `HTTP ${response.status} · ${response.contentType || 'unknown type'}`
+            : status}
+        </span>
+      </summary>
+      <dl className="seo-crawl-debug__grid">
+        <div>
+          <dt>Endpoint</dt>
+          <dd>{debug.endpoint || '/__site_crawl/scan'}</dd>
+        </div>
+        <div>
+          <dt>Status</dt>
+          <dd>{response.status ? `${response.status} ${response.statusText || ''}` : status}</dd>
+        </div>
+        <div>
+          <dt>Content type</dt>
+          <dd>{response.contentType || 'Not returned yet'}</dd>
+        </div>
+        <div>
+          <dt>Elapsed</dt>
+          <dd>{debug.elapsedMs == null ? 'Running...' : `${debug.elapsedMs} ms`}</dd>
+        </div>
+        <div>
+          <dt>Origin</dt>
+          <dd>{request.origin || 'https://leapfrogservices.com'}</dd>
+        </div>
+        <div>
+          <dt>Limit</dt>
+          <dd>{request.limit || 90}</dd>
+        </div>
+        {response.url && (
+          <div>
+            <dt>Final URL</dt>
+            <dd>{response.url}</dd>
+          </div>
+        )}
+        {response.payloadKeys?.length > 0 && (
+          <div>
+            <dt>Payload keys</dt>
+            <dd>{response.payloadKeys.join(', ')}</dd>
+          </div>
+        )}
+      </dl>
+      {response.bodyPreview && (
+        <>
+          <h3>Response preview</h3>
+          <pre>{response.bodyPreview}</pre>
+        </>
+      )}
+      <h3>Full debug object</h3>
+      <pre>{JSON.stringify(details, null, 2)}</pre>
+    </details>
+  );
+}
+
 export function SeoAeo() {
   const {
     analyzed,
@@ -134,6 +209,7 @@ export function SeoAeo() {
     siteCrawl,
     siteCrawlStatus,
     siteCrawlError,
+    siteCrawlDebug,
     runSiteCrawl,
   } = useData();
 
@@ -206,6 +282,8 @@ export function SeoAeo() {
     await runSiteCrawl({
       origin: 'https://leapfrogservices.com',
       limit: 90,
+    }).catch(() => {
+      // The visible error banner and debug panel are set by DataContext.
     });
   }
 
@@ -234,6 +312,12 @@ export function SeoAeo() {
           <LuTriangleAlert size={14} /> {siteCrawlError}
         </div>
       )}
+
+      <CrawlDebugPanel
+        debug={siteCrawlDebug || siteCrawl?._debug}
+        status={siteCrawlStatus}
+        error={siteCrawlError}
+      />
 
       <AuditIdentity siteCrawl={siteCrawl} />
 
