@@ -1,13 +1,28 @@
 # Netlify build & deploy config for the Leapfrog Analytics Dashboard.
-# Pure client-side Vite + React SPA — no backend, no functions, no env vars.
+# Vite + React SPA, plus one Netlify Function that performs the SEO/AEO
+# server-side crawl (the React app cannot fetch third-party HTML directly
+# because of CORS, so the crawl has to run server-side).
 
 [build]
   command = "npm run build"
   publish = "dist"
+  functions = "netlify/functions"
 
 [build.environment]
   NODE_VERSION = "20"
   NPM_FLAGS = "--no-audit --no-fund"
+
+[functions]
+  node_bundler = "esbuild"
+
+# Same-origin URL the dashboard's siteCrawler.js calls. Must come before
+# the SPA catch-all below, otherwise /* would swallow it and return
+# index.html (silently breaking the SEO/AEO crawl button in production).
+[[redirects]]
+  from = "/__site_crawl/scan"
+  to = "/.netlify/functions/site-crawl"
+  status = 200
+  force = true
 
 # React Router: every unknown path must serve the SPA shell so the client
 # router can resolve it. 200 (not 301) keeps the requested URL in the bar.
